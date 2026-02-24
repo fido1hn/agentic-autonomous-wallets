@@ -122,6 +122,36 @@ npm run demo:devnet
 npm run policy:check
 ```
 
+## DB migrations (Drizzle)
+
+Use migrations as the source of truth for schema changes.
+
+### First-time setup
+
+```bash
+bun run db:generate
+bun run aegis:init
+```
+
+### Normal workflow after schema changes
+
+```bash
+bun run db:generate
+bun run db:migrate
+```
+
+### Dev-only fast sync (optional)
+
+```bash
+bun run db:push
+```
+
+Notes:
+
+- Migrations are written to `/src/db/drizzle_migrations`.
+- DB path comes from `AEGIS_DB_PATH` (default: `./data/aegis.db`).
+- Commit migration files to git.
+
 ## How agents use Aegis
 
 ### Simple flow
@@ -130,7 +160,7 @@ Agent signs up -> gets `agentId` + wallet
 ↓
 Aegis gives that agent its own isolated wallet context
 ↓
-Agent sends `execute_intent` requests (structured `ExecutionIntent`)
+Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
 Aegis checks rules (input, limits, allowlists, simulation)
 ↓
@@ -175,6 +205,12 @@ MVP policy set:
 3. Enforce SPL mint allowlist + value caps
 4. Optionally add explicit reject rules
 5. Reject everything else by default
+
+## Terms
+
+- `ExecutionIntent`: the structured request an agent sends to Aegis
+- `approve`: Aegis allows signing and returns a tx signature
+- `reject`: Aegis blocks signing and returns a reason code
 
 ## Security notes
 

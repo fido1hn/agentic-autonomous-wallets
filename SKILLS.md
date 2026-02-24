@@ -4,6 +4,10 @@ This file lists what agents can do in Aegis.
 
 Rule: agents can request actions, but cannot sign directly.
 
+Simple model:
+
+Agent decides -> Aegis validates -> provider signs
+
 ## Skill groups
 
 ### Trading

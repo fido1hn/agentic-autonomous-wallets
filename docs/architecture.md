@@ -26,7 +26,7 @@ Agent signs up -> gets `agentId` + wallet
 ↓
 Aegis gives that agent its own isolated wallet context
 ↓
-Agent sends `ExecutionIntent`
+Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
 Aegis checks input + policy + simulation
 ↓
@@ -153,7 +153,7 @@ MVP excludes:
 
 - Mainnet production custody
 - HSM/MPC
-- Full distributed infra
+- Full distributed production architecture
 
 ## 9. Demo requirements
 
