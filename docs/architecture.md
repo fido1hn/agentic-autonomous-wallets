@@ -1,256 +1,172 @@
 # Aegis Architecture Deep Dive
 
-## 1. Problem Statement
+## 1. Problem
 
-Autonomous AI agents on Solana require wallet infrastructure that balances execution autonomy with explicit safety constraints.
+AI agents can act fast, but wallet signing must stay controlled.
 
-User-centric wallets assume human approval; agentic wallets require deterministic controls around:
+If agents can sign anything directly, risk is too high.
 
-- Key custody
-- Signing authority
-- Transaction scope
-- Runtime risk management
+Aegis solves this by separating:
 
-Aegis proposes a wallet kernel architecture where autonomous decisions are allowed, but signatures are policy-gated.
+- Agent decision-making
+- Wallet signing authority
 
-Locked implementation direction for this submission:
+## 2. Architecture (simple)
 
-- Agent interface and orchestration: Solana Agent Kit
-- Execution policy and risk controls: Aegis kernel
-- Signing/key management: Openfort backend wallets (primary)
-- Reliability fallback: local signer provider
+Aegis has 4 layers:
 
-## 2. System Architecture
+1. Agent Runtime (Solana Agent Kit)
+2. Wallet Engine (provider routing)
+3. Policy Engine (risk checks)
+4. Protocol Adapters (Jupiter now)
 
-Aegis is composed of four layers:
+Submission flow:
 
-1. Agent Runtime
-2. Wallet Engine
-3. Policy Engine
-4. Protocol Adapters
+Agent signs up -> gets `agentId` + wallet
+↓
+Aegis gives that agent its own isolated wallet context
+↓
+Agent sends `ExecutionIntent`
+↓
+Aegis checks input + policy + simulation
+↓
+If approved, Aegis requests signature from Openfort
+↓
+Openfort signs and returns tx signature
+↓
+Private key never touches agent logic or app code
 
-Execution flow:
+Execution flow in system terms:
 
-1. Solana Agent Kit strategy generates an intent
-2. Protocol adapter constructs transaction candidate
-3. Policy engine evaluates the transaction
-4. Signer engine signs only if approved through wallet provider
-5. Transaction is broadcast to devnet
-6. Audit logs and state are persisted
+1. Agent creates intent
+2. Adapter builds transaction
+3. Policy engine checks it
+4. Signer requests provider signature
+5. Transaction is broadcast
+6. Result is logged
 
-## 3. Component Design
+## 3. Component responsibilities
 
 ### 3.1 Agent Runtime
 
-Responsibilities:
-
-- Execute strategy loops on a fixed cadence
-- Build structured intents (action, amount, token pair, rationale)
-- Submit intents to wallet kernel
-
-Security property:
-
-- No private key access
-- No direct signing capability
-
-Implementation note:
-
-- Runtime implemented with Solana Agent Kit and constrained tools
+- Runs strategy loop
+- Produces structured intents
+- Never signs directly
 
 ### 3.2 Wallet Engine
 
-Responsibilities:
-
-- Manage wallet provider routing (`openfort` or `local`)
-- Provision agent wallets programmatically
-- Submit approved signing requests to provider implementation
-
-Security property:
-
-- Agent runtime never receives signing keys
-- Signing path remains behind policy gates
-
-Provider model:
-
-- Openfort provider (primary): managed backend wallet signing
-- Local provider (fallback): encrypted key storage for local execution
+- Routes to `openfort` or `local` provider
+- Resolves wallet per agent
+- Sends only approved requests to signer
 
 ### 3.3 Policy Engine
 
-Responsibilities:
+- Validates intent shape
+- Checks allowlists and limits
+- Enforces daily/per-tx caps
+- Requires simulation gate
 
-- Inspect instructions and required programs
-- Enforce allowlisted program IDs
-- Enforce allowlisted token mints
-- Enforce per-tx and daily notional caps
-- Gate signing on successful simulation
+### 3.4 Protocol Adapter
 
-Security property:
+- Converts intent to protocol tx format
+- Keeps protocol logic out of core runtime
 
-- Signing authority is contingent on deterministic policy evaluation
-- Policy enforcement is provider-agnostic and cannot be bypassed by agent tools
+Current adapter: Jupiter (devnet)
 
-### 3.4 Protocol Adapters
-
-Responsibilities:
-
-- Translate agent intents into protocol-specific transaction data
-- Isolate integration details from core signing logic
-
-Current adapter:
-
-- Jupiter swap flow (devnet)
-
-Future adapters can include lending and LP interactions with no changes to signing core.
-
-## 4. Data and State Model
+## 4. Data model
 
 SQLite stores:
 
-- Agent profiles and policy configurations
-- Intent history and execution outcomes
-- Rejections with explicit reason codes
-- Provider metadata and wallet references
+- Agent and wallet metadata
+- Policy references
+- Intent and tx outcomes
+- Rejection reasons
 
-This supports reproducibility, debugging, and compliance-style auditability.
+## 5. Security model
 
-## 5. Security Model
+### 5.1 Key custody
 
-### 5.1 Key Management
+Primary mode (`openfort`):
 
-Primary mode (Openfort):
+- Keys managed by Openfort
+- Aegis never receives raw private key
 
-- Signing keys managed by Openfort backend wallet infrastructure
-- Aegis uses API credentials and policy-scoped signing calls
-- Direct private key handling is removed from agent runtime
+Fallback mode (`local`):
 
-Fallback mode (local):
+- Encrypted local key handling for development resilience
 
-- Private keys encrypted with AES-256-GCM
-- Master key provided through environment/configuration at runtime
-- Nonce and auth tag stored alongside ciphertext
+### 5.2 Signing controls
 
-Limitations (prototype):
+A tx is signed only when all checks pass:
 
-- Openfort introduces third-party dependency and service trust assumptions
-- Local fallback has weaker guarantees than managed or hardware-backed custody
+- Allowed programs/tokens
+- Value limits
+- Daily spend cap
+- Simulation gate
 
-### 5.2 Signing Controls
+Any failed check => reject with reason code.
 
-A transaction can be signed only if all checks pass:
+### 5.3 Openfort policy semantics
 
-- Program IDs are allowlisted
-- Token mints are allowlisted
-- Notional is below per-transaction cap
-- Daily spend is within configured budget
-- RPC simulation returns success
-
-Failure at any step produces a hard reject with reason code.
-
-### 5.3 Openfort Policy Semantics (Provider Layer)
-
-In Openfort mode, provider-side policy authorization adds an external signing gate:
-
-- Policies are evaluated in priority order
-- Criteria inside each rule are AND-composed
-- First matching rule decides accept/reject
-- No matching rule is rejected (fail-closed)
-
-This is intentionally paired with Aegis kernel checks for defense-in-depth.
+- Policies run by priority
+- Rule criteria use AND logic
+- First match decides allow/reject
+- No match => reject (fail-closed)
 
 MVP policy profile:
 
-1. Allow `signSolTransaction` for only allowlisted destinations/programs
-2. Enforce SOL per-transaction lamport cap
-3. Enforce SPL mint allowlist and per-transaction value caps
-4. Reject unknown/high-risk patterns explicitly where useful
-5. Implicitly reject everything else by fail-closed default
+1. Restrict signing operation scope
+2. Enforce SOL value caps
+3. Enforce SPL mint/value rules
+4. Use explicit rejects for risky patterns
+5. Rely on fail-closed default
 
-Operational expectation:
+## 6. AI interaction model
 
-- Run policy preflight (`openfort.policies.evaluate`) in test/demo scripts
-- Record matched policy/rule IDs in audit logs when available
+- Agent decides
+- Aegis validates
+- Provider signs
 
-### 5.4 Threat Considerations
+This gives controlled autonomy.
 
-Threats and mitigations:
-
-- Rogue strategy logic: mitigated by kernel-side policy gating
-- Overspending due to loop bugs: mitigated by tx and daily caps
-- Unauthorized protocol calls: mitigated by program allowlist
-- Malformed transactions: mitigated by instruction inspection and simulation
-- Key exfiltration from storage: mitigated by encryption at rest
-- Unauthorized signing requests: mitigated by provider auth + Aegis policy gate
-
-Residual risks (prototype):
-
-- Runtime host compromise can expose in-memory secrets
-- Single-process architecture has blast-radius concentration
-
-## 6. AI Agent Interaction Model
-
-Aegis enforces strict separation between reasoning and execution.
-
-- The Solana Agent Kit layer can propose actions
-- The wallet kernel decides if execution is permitted
-- Signing authority never moves to the AI layer
-
-This model provides controllable autonomy:
-
-- Agents remain productive and autonomous
-- Operators retain deterministic risk boundaries
-- System behavior is inspectable through audit logs
-
-## 7. Multi-Agent Scalability
+## 7. Scalability model
 
 Each agent has:
 
-- Its own wallet
-- Its own policy profile
-- Its own strategy state
+- Isolated wallet context
+- Isolated policy profile
+- Independent strategy loop
 
-Scalability is achieved through isolation and stateless adapters. Shared infrastructure (RPC, DB, scheduler) can be scaled independently as load increases.
+Shared infrastructure can scale later.
 
-## 8. MVP to Production Path
+## 8. MVP boundaries
 
-MVP:
+MVP includes:
 
-- Single process
-- SQLite
-- Devnet only
-- Solana Agent Kit runtime for agent orchestration
-- Openfort backend wallet as primary signer
-- Local provider fallback for reliability testing
+- Solana Agent Kit runtime
+- Openfort primary signing
+- Local fallback provider
+- Devnet execution
+- Approved + rejected demo flows
 
-Production direction:
+MVP excludes:
 
-- Dedicated signer service boundary
-- HSM or MPC-backed key custody
-- Postgres and append-only audit ledger
-- Queue-based orchestration and retries
-- Policy-as-code with versioned rollout
-- Alerting and anomaly detection
+- Mainnet production custody
+- HSM/MPC
+- Full distributed infra
 
-## 9. Devnet Demonstration Plan
+## 9. Demo requirements
 
-The demonstration should include:
+Demo must show:
 
-- Multiple agent wallets created programmatically
-- Successful SOL/SPL protocol interaction
-- At least one policy-approved transaction
-- At least one policy-rejected transaction
-- Logged tx signatures and reject reasons
-- Terminal demo driven by Solana Agent Kit tool calls
-
-This proves both autonomous capability and security controls.
+- Multi-agent wallet setup
+- Real Solana interaction on devnet
+- One approved tx
+- One rejected tx
+- Audit logs with reason codes and signatures
 
 ## 10. Conclusion
 
-Aegis demonstrates a practical architecture for agentic wallets on Solana:
+Aegis gives agents useful autonomy while keeping signing tightly controlled.
 
-- Autonomous decision-making with constrained execution
-- Secure key handling via managed backend signing (Openfort primary)
-- Policy-driven signing to reduce risk
-- Multi-agent support with isolation and observability
-
-It is intentionally designed as a robust prototype that can evolve toward production-grade autonomous financial infrastructure.
+That is the core of a safe agent wallet system.

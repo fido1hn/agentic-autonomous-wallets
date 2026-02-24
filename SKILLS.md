@@ -1,70 +1,60 @@
 # Aegis Agent Skill Registry
 
-This file defines the capabilities available to agents in Aegis and the constraints under which they operate.
+This file lists what agents can do in Aegis.
 
-Agents are not trusted signers. They can only request actions from the wallet kernel. The kernel signs only if policy checks pass.
+Rule: agents can request actions, but cannot sign directly.
 
-For this submission, agent orchestration is handled through Solana Agent Kit, while signing is executed through the Aegis wallet provider interface.
+## Skill groups
 
-## Skill Domains
+### Trading
 
-### Trading Skills
+- Request SOL/SPL swaps via Jupiter adapter
+- Query balances and recent results
+- Submit execution intents
 
-- Request SOL <-> SPL token swaps via Jupiter adapter
-- Query balances and recent fills
-- Estimate expected output and slippage bounds
-- Submit execution intents for policy review
+### Risk and policy
 
-### Risk and Policy Skills
+- Enforce per-tx limits
+- Enforce daily caps
+- Enforce allowlisted programs and tokens
+- Enforce simulation gate
+- Enforce fail-closed behavior
 
-- Enforce max amount per transaction
-- Enforce cumulative daily spend caps
-- Enforce allowed program IDs
-- Enforce allowed token mint lists
-- Require RPC simulation success before signing
-- Apply fail-closed provider policy checks (no match => reject)
-- Support Openfort preflight policy evaluation before live execution
-- Reject high-risk or malformed intents with reason codes
+### Treasury and tracking
 
-### Treasury and Accounting Skills
+- Track balances
+- Track execution history
+- Track rejects and reason codes
 
-- Track per-wallet balances over time
-- Track realized and unrealized PnL deltas (where applicable)
-- Maintain transaction and rejection history
-- Report exposure by token and by agent
+### Execution
 
-### Execution Skills
+- Create wallets per agent
+- Route signing to Openfort (primary)
+- Use local signer as fallback
+- Broadcast approved transactions
 
-- Generate new wallets programmatically
-- Route signing to Openfort backend wallets (primary mode)
-- Use local encrypted signer as fallback mode
-- Sign valid transactions automatically after policy approval
-- Broadcast signed transactions to Solana devnet
+### Strategy
 
-### Strategy Skills
+- Timed rebalance logic
+- Threshold-trigger logic
+- Deterministic loops
 
-- Timed rebalance execution
-- Threshold-triggered execution
-- Deterministic tick-based decision loops
-- Configurable cadence and guardrails per agent
-
-## Agent Restrictions
+## Restrictions
 
 Agents cannot:
 
-- Read raw private keys
-- Bypass policy evaluation
-- Sign arbitrary transactions directly
-- Interact with non-allowlisted programs
-- Transfer unrestricted amounts outside configured limits
+- Access raw private keys
+- Bypass policy checks
+- Sign arbitrary transactions
+- Use non-allowlisted programs
+- Spend outside configured limits
 
-## Separation of Responsibilities
+## Responsibility split
 
-- Solana Agent Kit runtime: decides what to do
-- Protocol adapter: builds candidate transaction instructions
-- Policy engine: validates whether action is permitted
-- Wallet provider: executes signing (`openfort` primary, `local` fallback)
-- Signer engine: signs only policy-approved transactions through the provider
-- Openfort policy layer: enforces first-match authorization with fail-closed defaults
+- Solana Agent Kit: decides actions
+- Protocol adapter: builds tx
+- Policy engine: validates action
+- Wallet provider: signs (`openfort` primary, `local` fallback)
+- Signer engine: executes only after approval
 
-This separation is foundational to Aegis security.
+This split is the safety foundation.
