@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "./schema";
 import { createAgentsRepository } from "./repositories/agentsRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
@@ -32,6 +33,10 @@ export interface SqliteContext {
   repositories: Repositories;
 }
 
+export interface MigrationOptions {
+  migrationsFolder?: string;
+}
+
 // Ensure the DB parent directory exists for file-backed SQLite paths.
 function ensureParentDirectory(dbPath: string): void {
   if (dbPath === ":memory:") {
@@ -47,6 +52,15 @@ export function resolveDbPath(pathFromCaller?: string): string {
   if (configured === ":memory:") {
     return configured;
   }
+  return resolve(process.cwd(), configured);
+}
+
+// Resolve migration folder from caller/env/default.
+export function resolveMigrationsFolder(folderFromCaller?: string): string {
+  const configured =
+    folderFromCaller ??
+    process.env.AEGIS_MIGRATIONS_PATH ??
+    "./src/db/drizzle_migrations";
   return resolve(process.cwd(), configured);
 }
 
@@ -80,4 +94,14 @@ export function connectSqlite(pathFromCaller?: string): SqliteContext {
     db,
     repositories: createRepositories(db)
   };
+}
+
+// Apply all pending Drizzle migrations for this DB.
+// Safe to run on every startup; only unapplied migrations execute.
+export function runDrizzleMigrations(
+  db: BunSQLiteDatabase<typeof schema>,
+  options?: MigrationOptions
+): void {
+  const migrationsFolder = resolveMigrationsFolder(options?.migrationsFolder);
+  migrate(db, { migrationsFolder });
 }

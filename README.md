@@ -130,14 +130,17 @@ Use migrations as the source of truth for schema changes.
 
 ```bash
 bun run db:generate
-bun run aegis:init
+bun run start
 ```
+
+`start` now applies pending migrations automatically before runtime work begins.
+If you want to run migrations without starting the runtime, use `bun run aegis:init`.
 
 ### Normal workflow after schema changes
 
 ```bash
 bun run db:generate
-bun run db:migrate
+bun run start
 ```
 
 ### Dev-only fast sync (optional)

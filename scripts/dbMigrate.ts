@@ -1,21 +1,10 @@
-import { existsSync } from "node:fs";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
-import { createDrizzleDb, resolveDbPath } from "../src/db/sqlite";
+import { createDrizzleDb, resolveDbPath, runDrizzleMigrations } from "../src/db/sqlite";
 
 async function main(): Promise<void> {
   const dbPath = resolveDbPath();
-  const migrationsFolder = "./src/db/drizzle_migrations";
-
-  if (!existsSync(migrationsFolder)) {
-    console.log(
-      `No migrations found at ${migrationsFolder}. Run 'bun run db:generate' first.`,
-    );
-    return;
-  }
-
   const { client, db } = createDrizzleDb();
   try {
-    migrate(db, { migrationsFolder });
+    runDrizzleMigrations(db);
     console.log(`Drizzle migrations applied (db: ${dbPath})`);
   } finally {
     client.close();
