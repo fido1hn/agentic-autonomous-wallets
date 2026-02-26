@@ -1,15 +1,18 @@
 export type AgentStatus = "active" | "paused";
-export type ProviderName = "openfort" | "local";
+export type ProviderName = "privy";
 export type ExecutionStatus = "approved" | "rejected";
+export type AgentApiKeyStatus = "active" | "revoked";
 
-import type { agentsTable, executionLogsTable, walletBindingsTable } from "./schema";
+import type { agentApiKeysTable, agentsTable, executionLogsTable, walletBindingsTable } from "./schema";
 
 type AgentRow = typeof agentsTable.$inferSelect;
 type WalletBindingRow = typeof walletBindingsTable.$inferSelect;
 type ExecutionLogRow = typeof executionLogsTable.$inferSelect;
+type AgentApiKeyRow = typeof agentApiKeysTable.$inferSelect;
 
 export type AgentRecord = Omit<AgentRow, "status"> & { status: AgentStatus };
 export type WalletBindingRecord = Omit<WalletBindingRow, "provider"> & { provider: ProviderName };
+export type AgentApiKeyRecord = Omit<AgentApiKeyRow, "status"> & { status: AgentApiKeyStatus };
 
 export interface ExecutionLogRecord extends Omit<ExecutionLogRow, "status" | "provider" | "policyChecksJson"> {
   status: ExecutionStatus;
@@ -37,6 +40,12 @@ export interface CreateExecutionLogInput {
   policyChecks: string[];
 }
 
+export interface CreateAgentApiKeyInput {
+  agentId: string;
+  keyHash: string;
+  label?: string;
+}
+
 export interface AgentRepository {
   create(input: CreateAgentInput): Promise<AgentRecord>;
   findById(id: string): Promise<AgentRecord | null>;
@@ -49,11 +58,19 @@ export interface WalletBindingRepository {
 
 export interface ExecutionLogRepository {
   append(input: CreateExecutionLogInput): Promise<ExecutionLogRecord>;
-  listByAgentId(agentId: string): Promise<ExecutionLogRecord[]>;
+  listByAgentId(agentId: string, options?: { limit?: number }): Promise<ExecutionLogRecord[]>;
+}
+
+export interface AgentApiKeyRepository {
+  create(input: CreateAgentApiKeyInput): Promise<AgentApiKeyRecord>;
+  findActiveByAgentId(agentId: string): Promise<AgentApiKeyRecord | null>;
+  revokeByAgentId(agentId: string): Promise<number>;
+  touchLastUsed(id: string): Promise<void>;
 }
 
 export interface Repositories {
   agents: AgentRepository;
   walletBindings: WalletBindingRepository;
   executionLogs: ExecutionLogRepository;
+  agentApiKeys: AgentApiKeyRepository;
 }

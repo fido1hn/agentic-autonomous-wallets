@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import * as schema from "../schema";
 import { executionLogsTable } from "../schema";
@@ -63,10 +63,14 @@ export function createExecutionLogsRepository(
       return toExecutionLogRecord(row);
     },
 
-    async listByAgentId(agentId: string): Promise<ExecutionLogRecord[]> {
+    async listByAgentId(
+      agentId: string,
+      options?: { limit?: number }
+    ): Promise<ExecutionLogRecord[]> {
       const rows = await db.query.executionLogsTable.findMany({
         where: eq(executionLogsTable.agentId, agentId),
-        orderBy: [asc(executionLogsTable.createdAt)],
+        orderBy: [desc(executionLogsTable.createdAt)],
+        limit: options?.limit
       });
 
       return rows.map(toExecutionLogRecord);

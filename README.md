@@ -9,15 +9,14 @@ It lets agents act on-chain, but only inside strict safety rules.
 - Creates wallets for agents
 - Lets agents send structured intents
 - Checks policy before any signature is allowed
-- Signs through Openfort (primary) or local signer (fallback)
+- Signs through Privy-managed wallets
 - Logs every approve/reject decision
 
 ## Locked stack (this submission)
 
-- Agent runtime: Solana Agent Kit (SendAI)
+- Runtime: Hono API on Bun
 - Execution and policy layer: Aegis
-- Signing and key custody: Openfort Backend Wallets (primary)
-- Fallback signing mode: local signer
+- Signing and key custody: Privy server wallets
 - Network: Solana devnet
 
 ## Core idea
@@ -31,8 +30,7 @@ Aegis is the gate between agent decisions and wallet signatures.
 ## Core features
 
 - Programmatic wallet creation per agent
-- Openfort-based signing path
-- Local fallback signing path
+- Privy-based signing path
 - Policy checks: limits, allowlists, simulation
 - Per-tx cap and daily cap controls
 - Structured audit logs for every intent
@@ -43,8 +41,7 @@ Aegis is the gate between agent decisions and wallet signatures.
 
 - 3 agents running independently
 - Jupiter swap adapter on devnet
-- Solana Agent Kit terminal loop
-- Openfort signing integration
+- Privy signing integration
 - Policy gate in Aegis
 - Approved flow + rejected flow
 
@@ -56,21 +53,26 @@ Aegis is the gate between agent decisions and wallet signatures.
 
 ## Tech stack
 
-- TypeScript + Node.js
-- Solana Agent Kit
+- TypeScript + Bun
 - `@solana/web3.js`
 - `@solana/spl-token`
 - Jupiter API
-- Openfort Backend Wallets
+- Privy Node SDK
 - SQLite
-- Vitest
+- Bun test
+
+External demo clients (not part of Aegis core):
+
+- Solana Agent Kit (SAK)
+- OpenClaw
+- Any agent framework that can make HTTP requests
 
 ## Setup
 
 ### 1) Install
 
 ```bash
-npm install
+bun install
 ```
 
 ### 2) Configure
@@ -83,44 +85,59 @@ Important vars:
 
 ```bash
 SOLANA_RPC=https://api.devnet.solana.com
-WALLET_PROVIDER=openfort
-OPENFORT_API_URL=<openfort-api-url>
-OPENFORT_PUBLISHABLE_KEY=<openfort-publishable-key>
-OPENFORT_BACKEND_WALLET_SECRET=<openfort-wallet-secret>
-OPENFORT_POLICY_IDS=<comma-separated-policy-ids>
+PRIVY_APP_ID=<privy-app-id>
+PRIVY_APP_SECRET=<privy-app-secret>
+PRIVY_WALLET_POLICY_IDS=<optional-comma-separated-policy-ids>
 LOG_LEVEL=info
 ```
 
-Local fallback mode:
-
-```bash
-WALLET_PROVIDER=local
-MASTER_ENCRYPTION_KEY=<64-char-hex-key>
-```
+App startup fails fast when `PRIVY_APP_ID` or `PRIVY_APP_SECRET` is missing.
 
 ### 3) Run
 
 ```bash
-npm run start
+bun run start
 ```
+
+This starts the Hono API server on `http://localhost:3000` by default.
 
 ### 4) Test
 
 ```bash
-npm test
+bun test
 ```
 
 ### 5) Demo
 
 ```bash
-npm run demo:devnet
+bun run demo:devnet
 ```
 
 ### 6) Policy preflight
 
 ```bash
-npm run policy:check
+bun run policy:check
 ```
+
+### 7) Live Privy wallet smoke test (real API calls)
+
+```bash
+bun run test:privy-live
+```
+
+## API endpoints (v1)
+
+- `GET /health`
+- `POST /agents`
+- `POST /agents/:agentId/wallet`
+- `GET /agents/:agentId/wallet`
+- `POST /intents/execute`
+- `GET /agents/:agentId/executions?limit=50`
+
+Agent-scoped endpoints require:
+
+- `x-agent-id: <agentId>`
+- `x-agent-api-key: <apiKey>`
 
 ## DB migrations (Drizzle)
 
@@ -167,9 +184,9 @@ Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
 Aegis checks rules (input, limits, allowlists, simulation)
 ↓
-If approved, Aegis asks Openfort to sign
+If approved, Aegis asks Privy to sign
 ↓
-Openfort signs and returns tx signature
+Privy signs and returns signed tx for broadcast
 ↓
 Private key never touches agent logic or app code
 
@@ -187,14 +204,14 @@ Private key never touches agent logic or app code
 }
 ```
 
-## Openfort policy profile (MVP)
+## Privy policy profile (MVP)
 
 Aegis uses two safety layers:
 
 - Inner layer: Aegis policy checks
-- Outer layer: Openfort policy checks
+- Outer layer: Privy policy checks
 
-Openfort policy behavior used here:
+Privy policy behavior used here:
 
 - Priority order matters
 - Rule criteria use AND logic
@@ -223,7 +240,7 @@ Current protections:
 
 - Agent never gets raw private key
 - Signing is behind policy gates
-- Openfort handles primary key custody
+- Privy handles primary key custody
 - Simulation gate before broadcast
 - Full approve/reject audit trail
 

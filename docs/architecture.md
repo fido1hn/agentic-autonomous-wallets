@@ -15,7 +15,7 @@ Aegis solves this by separating:
 
 Aegis has 4 layers:
 
-1. Agent Runtime (Solana Agent Kit)
+1. API Runtime (Hono on Bun)
 2. Wallet Engine (provider routing)
 3. Policy Engine (risk checks)
 4. Protocol Adapters (Jupiter now)
@@ -30,9 +30,9 @@ Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
 Aegis checks input + policy + simulation
 ↓
-If approved, Aegis requests signature from Openfort
+If approved, Aegis requests signature from Privy
 ↓
-Openfort signs and returns tx signature
+Privy signs and returns a signed transaction for broadcast
 ↓
 Private key never touches agent logic or app code
 
@@ -47,15 +47,16 @@ Execution flow in system terms:
 
 ## 3. Component responsibilities
 
-### 3.1 Agent Runtime
+### 3.1 External agent client
 
-- Runs strategy loop
+- Runs strategy loop outside Aegis
 - Produces structured intents
+- Calls Aegis API
 - Never signs directly
 
 ### 3.2 Wallet Engine
 
-- Routes to `openfort` or `local` provider
+- Routes signing to `privy` wallet APIs
 - Resolves wallet per agent
 - Sends only approved requests to signer
 
@@ -86,14 +87,10 @@ SQLite stores:
 
 ### 5.1 Key custody
 
-Primary mode (`openfort`):
+Signing mode (`privy`):
 
-- Keys managed by Openfort
+- Keys managed by Privy
 - Aegis never receives raw private key
-
-Fallback mode (`local`):
-
-- Encrypted local key handling for development resilience
 
 ### 5.2 Signing controls
 
@@ -106,7 +103,7 @@ A tx is signed only when all checks pass:
 
 Any failed check => reject with reason code.
 
-### 5.3 Openfort policy semantics
+### 5.3 Privy policy semantics
 
 - Policies run by priority
 - Rule criteria use AND logic
@@ -143,9 +140,8 @@ Shared infrastructure can scale later.
 
 MVP includes:
 
-- Solana Agent Kit runtime
-- Openfort primary signing
-- Local fallback provider
+- Hono API runtime
+- Privy signing
 - Devnet execution
 - Approved + rejected demo flows
 

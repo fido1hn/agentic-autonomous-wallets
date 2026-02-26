@@ -5,14 +5,19 @@ import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "./schema";
 import { createAgentsRepository } from "./repositories/agentsRepository";
+import { createAgentApiKeysRepository } from "./repositories/agentApiKeysRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
 import { createWalletBindingsRepository } from "./repositories/walletBindingsRepository";
 import type { Repositories } from "./types";
 
 export type {
   AgentRecord,
+  AgentApiKeyRecord,
+  AgentApiKeyRepository,
   AgentRepository,
+  AgentApiKeyStatus,
   AgentStatus,
+  CreateAgentApiKeyInput,
   CreateAgentInput,
   CreateExecutionLogInput,
   ExecutionLogRecord,
@@ -81,6 +86,7 @@ export function createDrizzleDb(
 export function createRepositories(db: BunSQLiteDatabase<typeof schema>): Repositories {
   return {
     agents: createAgentsRepository(db),
+    agentApiKeys: createAgentApiKeysRepository(db),
     walletBindings: createWalletBindingsRepository(db),
     executionLogs: createExecutionLogsRepository(db)
   };

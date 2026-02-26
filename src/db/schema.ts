@@ -15,8 +15,22 @@ export const walletBindingsTable = sqliteTable("wallet_bindings", {
     .primaryKey()
     .references(() => agentsTable.id, { onDelete: "cascade" }),
   walletRef: text("wallet_ref").notNull(),
-  provider: text("provider", { enum: ["openfort", "local"] }).notNull(),
+  provider: text("provider", { enum: ["privy"] }).notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+export const agentApiKeysTable = sqliteTable("agent_api_keys", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  agentId: text("agent_id")
+    .notNull()
+    .references(() => agentsTable.id, { onDelete: "cascade" }),
+  keyHash: text("key_hash").notNull(),
+  label: text("label"),
+  status: text("status", { enum: ["active", "revoked"] }).notNull(),
+  createdAt: text("created_at").notNull(),
+  lastUsedAt: text("last_used_at")
 });
 
 export const executionLogsTable = sqliteTable("execution_logs", {
@@ -28,7 +42,7 @@ export const executionLogsTable = sqliteTable("execution_logs", {
     .references(() => agentsTable.id, { onDelete: "cascade" }),
   status: text("status", { enum: ["approved", "rejected"] }).notNull(),
   reasonCode: text("reason_code"),
-  provider: text("provider", { enum: ["openfort", "local"] }),
+  provider: text("provider", { enum: ["privy"] }),
   txSignature: text("tx_signature"),
   policyChecksJson: text("policy_checks_json").notNull(),
   createdAt: text("created_at").notNull(),
