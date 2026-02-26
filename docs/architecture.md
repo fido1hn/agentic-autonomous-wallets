@@ -36,14 +36,16 @@ Privy signs and returns a signed transaction for broadcast
 ↓
 Private key never touches agent logic or app code
 
-Execution flow in system terms:
+Execution flow in system terms (current runtime):
 
-1. Agent creates intent
-2. Adapter builds transaction
-3. Policy engine checks it
-4. Signer requests provider signature
-5. Transaction is broadcast
-6. Result is logged
+1. Agent submits `ExecutionIntent`
+2. Aegis resolves wallet binding
+3. Assigned DSL policies are evaluated
+4. Baseline Aegis policies are evaluated
+5. Protocol adapter builds transaction
+6. Simulation gate validates tx safety
+7. Provider signs and tx is broadcast
+8. Execution result + checks are logged
 
 ## 3. Component responsibilities
 
@@ -58,14 +60,21 @@ Execution flow in system terms:
 
 - Routes signing to `privy` wallet APIs
 - Resolves wallet per agent
-- Sends only approved requests to signer
+- Sends only already-approved requests to signer
 
 ### 3.3 Policy Engine
 
-- Validates intent shape
-- Checks allowlists and limits
-- Enforces daily/per-tx caps
-- Requires simulation gate
+- Enforces assigned DSL policy rules per wallet
+- Enforces baseline global guardrails
+- Enforces simulation gate
+- Returns deterministic reason codes for rejects
+
+Current DSL v1 rule set:
+
+- `allowed_actions`
+- `max_lamports_per_tx`
+- `allowed_mints`
+- `max_slippage_bps`
 
 ### 3.4 Protocol Adapter
 
@@ -96,27 +105,18 @@ Signing mode (`privy`):
 
 A tx is signed only when all checks pass:
 
-- Allowed programs/tokens
-- Value limits
-- Daily spend cap
+- Assigned wallet policy checks
+- Baseline intent checks (amount, caps, shape)
 - Simulation gate
 
 Any failed check => reject with reason code.
 
-### 5.3 Privy policy semantics
+### 5.3 Inner vs outer controls
 
-- Policies run by priority
-- Rule criteria use AND logic
-- First match decides allow/reject
-- No match => reject (fail-closed)
+- Inner control (Aegis): intent + policy decisions before signing
+- Outer control (Privy): key custody and signing infrastructure
 
-MVP policy profile:
-
-1. Restrict signing operation scope
-2. Enforce SOL value caps
-3. Enforce SPL mint/value rules
-4. Use explicit rejects for risky patterns
-5. Rely on fail-closed default
+This keeps custody concerns separate from product policy logic.
 
 ## 6. AI interaction model
 
@@ -124,7 +124,7 @@ MVP policy profile:
 - Aegis validates
 - Provider signs
 
-This gives controlled autonomy.
+This gives controlled autonomy with deterministic safety gates.
 
 ## 7. Scalability model
 
@@ -164,5 +164,9 @@ Demo must show:
 ## 10. Conclusion
 
 Aegis gives agents useful autonomy while keeping signing tightly controlled.
+
+The core value is not custody alone.
+
+The core value is intent + policy orchestration that is provider-agnostic and enforced before signing.
 
 That is the core of a safe agent wallet system.

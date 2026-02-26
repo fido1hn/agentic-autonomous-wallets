@@ -1,6 +1,8 @@
 import type { PolicyRecord } from "../db/sqlite";
 import type { ExecutionIntent, PolicyDecision } from "../types/intents";
 
+// In-memory daily spend tracker keyed by agent.
+// Good for dev/test; move to DB-backed counters for multi-instance production.
 type DailySpendState = {
   dayKey: string;
   spentLamports: bigint;
@@ -35,6 +37,7 @@ function projectedDailySpend(agentId: string, amount: bigint): bigint {
   return current.spentLamports + amount;
 }
 
+// Called only on approved execution to advance the in-memory daily spend counter.
 export function registerApprovedSpend(agentId: string, amountLamports: string): void {
   const amount = parseLamports(amountLamports);
   if (amount === null || amount === 0n) {
@@ -54,6 +57,8 @@ export function registerApprovedSpend(agentId: string, amountLamports: string): 
   });
 }
 
+// Placeholder simulation policy.
+// Current behavior uses runtime flags and simple payload marker checks.
 export async function evaluateSimulation(serializedTx: string): Promise<PolicyDecision> {
   const checks = ["rpc_simulation"];
   const requireSimulation = process.env.AEGIS_REQUIRE_RPC_SIMULATION !== "false";
@@ -74,6 +79,8 @@ export async function evaluateSimulation(serializedTx: string): Promise<PolicyDe
   return { allowed: true, checks };
 }
 
+// Baseline Aegis guardrails that always run, even when no custom policy is assigned.
+// These are environment-driven defaults for amount shape, per-tx cap, and daily cap.
 export async function evaluateIntent(intent: ExecutionIntent): Promise<PolicyDecision> {
   const checks: string[] = ["intent_shape"];
 
@@ -108,6 +115,8 @@ export async function evaluateIntent(intent: ExecutionIntent): Promise<PolicyDec
   return { allowed: true, checks };
 }
 
+// Evaluates wallet-assigned DSL policies.
+// If no policies are assigned, this check passes by design.
 export async function evaluateAssignedPolicies(
   intent: ExecutionIntent,
   policies: PolicyRecord[]
@@ -125,6 +134,7 @@ export async function evaluateAssignedPolicies(
   }
 
   for (const policy of policies) {
+    // Non-active policies stay attached but are skipped during evaluation.
     if (policy.status !== "active") {
       checks.push(`policy:${policy.id}:inactive`);
       continue;
@@ -132,6 +142,7 @@ export async function evaluateAssignedPolicies(
 
     checks.push(`policy:${policy.id}:active`);
     for (const rule of policy.dsl.rules) {
+      // First failing rule rejects immediately with a precise reason code.
       switch (rule.kind) {
         case "allowed_actions": {
           checks.push(`rule:allowed_actions:${policy.id}`);

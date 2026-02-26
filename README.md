@@ -31,7 +31,7 @@ Aegis is the gate between agent decisions and wallet signatures.
 
 - Programmatic wallet creation per agent
 - Privy-based signing path
-- Policy checks: limits, allowlists, simulation
+- Policy checks: assigned DSL rules + baseline limits + simulation
 - Per-tx cap and daily cap controls
 - Structured audit logs for every intent
 
@@ -190,6 +190,18 @@ Privy signs and returns signed tx for broadcast
 ↓
 Private key never touches agent logic or app code
 
+### Security pipeline (actual execution order)
+
+1. Resolve agent wallet binding
+2. Evaluate assigned Aegis DSL policies for that wallet
+3. Evaluate baseline Aegis safety checks (global defaults)
+4. Build transaction payload (adapter)
+5. Run simulation gate
+6. Request provider signature + broadcast
+7. Persist decision logs and policy checks
+
+If any step fails, execution is rejected with a reason code.
+
 ### ExecutionIntent example
 
 ```json
@@ -204,27 +216,19 @@ Private key never touches agent logic or app code
 }
 ```
 
-## Privy policy profile (MVP)
+## Why Aegis is the core security layer
 
-Aegis uses two safety layers:
+Key management stays with Privy.
 
-- Inner layer: Aegis policy checks
-- Outer layer: Privy policy checks
+Policy and intent control stays with Aegis.
 
-Privy policy behavior used here:
+That means:
 
-- Priority order matters
-- Rule criteria use AND logic
-- First matching rule decides
-- No match means reject (fail-closed)
+- agents keep autonomy to propose actions
+- Aegis keeps authority to approve/reject actions
+- provider only signs when Aegis already approved
 
-MVP policy set:
-
-1. Allow only intended Solana signing operation
-2. Enforce SOL per-tx cap
-3. Enforce SPL mint allowlist + value caps
-4. Optionally add explicit reject rules
-5. Reject everything else by default
+This is the product edge: deterministic intent policy enforcement before signing.
 
 ## Terms
 

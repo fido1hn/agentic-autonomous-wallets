@@ -11,6 +11,8 @@ import {
 import { getOrCreateWallet } from "../wallet/walletFactory";
 import { getWalletProvider } from "./walletProvider";
 
+// Builds a serialized transaction payload from the normalized intent.
+// Swap uses the Jupiter adapter; other actions keep placeholder encoding for now.
 async function buildSerializedTransaction(intent: ExecutionIntent): Promise<string> {
   if (intent.action === "swap") {
     return buildJupiterSwap(intent);
@@ -20,6 +22,8 @@ async function buildSerializedTransaction(intent: ExecutionIntent): Promise<stri
   return JSON.stringify(intent);
 }
 
+// Best-effort audit persistence to DB.
+// Runtime execution should not fail if logging storage fails.
 async function appendExecutionLogSafe(payload: {
   agentId: string;
   status: "approved" | "rejected";
@@ -45,12 +49,15 @@ async function appendExecutionLogSafe(payload: {
 
 export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionResult> {
   const { policyService } = getActiveAppContext();
+
+  // Ensure the agent has a wallet binding before any policy/signing checks.
   const wallet = await getOrCreateWallet(intent.agentId);
   const resolvedIntent: ExecutionIntent = {
     ...intent,
     walletAddress: intent.walletAddress ?? wallet.walletRef
   };
 
+  // 1) Enforce wallet-assigned DSL policies (user-configured controls).
   const assignedPolicies = await policyService.listAgentWalletPolicies(resolvedIntent.agentId);
   const assignedPolicyDecision = await evaluateAssignedPolicies(resolvedIntent, assignedPolicies);
   if (!assignedPolicyDecision.allowed) {
@@ -74,6 +81,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     return rejected;
   }
 
+  // 2) Enforce baseline Aegis protections (global safety defaults).
   const baselinePolicyDecision = await evaluateIntent(resolvedIntent);
   if (!baselinePolicyDecision.allowed) {
     const rejected: ExecutionResult = {
@@ -96,6 +104,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     return rejected;
   }
 
+  // 3) Build the transaction only after policy checks pass.
   let serializedTx = "";
   try {
     serializedTx = await buildSerializedTransaction(resolvedIntent);
@@ -141,6 +150,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     return rejected;
   }
 
+  // 4) Run simulation gate before signing.
   const simulationDecision = await evaluateSimulation(serializedTx);
   if (!simulationDecision.allowed) {
     const rejected: ExecutionResult = {
@@ -167,6 +177,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     return rejected;
   }
 
+  // 5) Sign + broadcast through provider custody layer.
   const provider = getWalletProvider();
   let signature: SignatureResult;
   try {
@@ -200,6 +211,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     return rejected;
   }
 
+  // 6) Update in-memory spend tracker for baseline daily-cap checks.
   registerApprovedSpend(resolvedIntent.agentId, resolvedIntent.amountLamports);
 
   const approved: ExecutionResult = {
