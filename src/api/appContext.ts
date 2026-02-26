@@ -2,6 +2,7 @@ import { connectSqlite, resolveDbPath, runDrizzleMigrations, type SqliteContext 
 import { AgentAuthService } from "../services/agentAuthService";
 import { AgentService } from "../services/agentService";
 import { AgentWalletService } from "../services/agentWalletService";
+import { PolicyService } from "../services/policyService";
 import { assertPrivyConfig } from "../wallet/privyClient";
 
 export interface AppContext {
@@ -10,6 +11,7 @@ export interface AppContext {
   agentService: AgentService;
   agentWalletService: AgentWalletService;
   agentAuthService: AgentAuthService;
+  policyService: PolicyService;
 }
 
 let activeAppContext: AppContext | null = null;
@@ -35,13 +37,19 @@ export async function createAppContext(): Promise<AppContext> {
   const agentService = new AgentService(db.repositories.agents);
   const agentWalletService = new AgentWalletService(db.repositories.agents, db.repositories.walletBindings);
   const agentAuthService = new AgentAuthService(db.repositories.agents, db.repositories.agentApiKeys);
+  const policyService = new PolicyService(
+    db.repositories.policies,
+    db.repositories.walletBindings,
+    db.repositories.walletPolicyAssignments
+  );
 
   const context: AppContext = {
     db,
     dbPath,
     agentService,
     agentWalletService,
-    agentAuthService
+    agentAuthService,
+    policyService
   };
 
   activeAppContext = context;

@@ -1,4 +1,4 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const agentsTable = sqliteTable("agents", {
   id: text("id")
@@ -30,7 +30,7 @@ export const agentApiKeysTable = sqliteTable("agent_api_keys", {
   label: text("label"),
   status: text("status", { enum: ["active", "revoked"] }).notNull(),
   createdAt: text("created_at").notNull(),
-  lastUsedAt: text("last_used_at")
+  lastUsedAt: text("last_used_at"),
 });
 
 export const executionLogsTable = sqliteTable("execution_logs", {
@@ -47,3 +47,39 @@ export const executionLogsTable = sqliteTable("execution_logs", {
   policyChecksJson: text("policy_checks_json").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+export const policiesTable = sqliteTable("policies", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status", {
+    enum: ["active", "disabled", "archived"],
+  }).notNull(),
+  dslJson: text("dsl_json").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const walletPolicyAssignmentsTable = sqliteTable(
+  "wallet_policy_assignments",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => walletBindingsTable.agentId, { onDelete: "cascade" }),
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => policiesTable.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("wallet_policy_assignments_agent_policy_idx").on(
+      table.agentId,
+      table.policyId,
+    ),
+  ],
+);

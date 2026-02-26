@@ -7,7 +7,9 @@ import * as schema from "./schema";
 import { createAgentsRepository } from "./repositories/agentsRepository";
 import { createAgentApiKeysRepository } from "./repositories/agentApiKeysRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
+import { createPoliciesRepository } from "./repositories/policiesRepository";
 import { createWalletBindingsRepository } from "./repositories/walletBindingsRepository";
+import { createWalletPolicyAssignmentsRepository } from "./repositories/walletPolicyAssignmentsRepository";
 import type { Repositories } from "./types";
 
 export type {
@@ -22,9 +24,15 @@ export type {
   CreateExecutionLogInput,
   ExecutionLogRecord,
   ExecutionLogRepository,
+  CreatePolicyInput,
+  PolicyRecord,
+  PolicyRepository,
+  PolicyStatus,
   ProviderName,
   Repositories,
   UpsertWalletBindingInput,
+  WalletPolicyAssignmentRecord,
+  WalletPolicyAssignmentRepository,
   WalletBindingRecord,
   WalletBindingRepository
 } from "./types";
@@ -88,7 +96,9 @@ export function createRepositories(db: BunSQLiteDatabase<typeof schema>): Reposi
     agents: createAgentsRepository(db),
     agentApiKeys: createAgentApiKeysRepository(db),
     walletBindings: createWalletBindingsRepository(db),
-    executionLogs: createExecutionLogsRepository(db)
+    executionLogs: createExecutionLogsRepository(db),
+    policies: createPoliciesRepository(db),
+    walletPolicyAssignments: createWalletPolicyAssignmentsRepository(db)
   };
 }
 
