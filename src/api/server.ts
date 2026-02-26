@@ -4,6 +4,7 @@ import { agentsRoutes } from "./routes/agents";
 import { executionRoutes } from "./routes/executions";
 import { healthRoutes } from "./routes/health";
 import { intentsRoutes } from "./routes/intents";
+import { policiesRoutes } from "./routes/policies";
 import { walletsRoutes } from "./routes/wallets";
 
 async function main(): Promise<void> {
@@ -15,6 +16,7 @@ async function main(): Promise<void> {
   app.route("/", walletsRoutes);
   app.route("/", intentsRoutes);
   app.route("/", executionRoutes);
+  app.route("/", policiesRoutes);
 
   const port = Number.parseInt(process.env.PORT ?? "3000", 10);
   const server = Bun.serve({

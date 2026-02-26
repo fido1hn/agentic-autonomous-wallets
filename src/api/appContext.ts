@@ -27,6 +27,10 @@ export function clearActiveAppContext(): void {
   activeAppContext = null;
 }
 
+export function setActiveAppContextForTests(context: AppContext | null): void {
+  activeAppContext = context;
+}
+
 export async function createAppContext(): Promise<AppContext> {
   assertPrivyConfig();
 
