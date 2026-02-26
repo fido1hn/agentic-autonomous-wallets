@@ -1,3 +1,4 @@
+import type { PolicyRecord } from "../db/sqlite";
 import type { ExecutionIntent, PolicyDecision } from "../types/intents";
 
 type DailySpendState = {
@@ -102,6 +103,79 @@ export async function evaluateIntent(intent: ExecutionIntent): Promise<PolicyDec
   const projected = projectedDailySpend(intent.agentId, lamports);
   if (projected > getDailyCap()) {
     return { allowed: false, reasonCode: "POLICY_DAILY_CAP_EXCEEDED", checks };
+  }
+
+  return { allowed: true, checks };
+}
+
+export async function evaluateAssignedPolicies(
+  intent: ExecutionIntent,
+  policies: PolicyRecord[]
+): Promise<PolicyDecision> {
+  const checks: string[] = ["assigned_policies"];
+
+  if (policies.length === 0) {
+    checks.push("assigned_policies:none");
+    return { allowed: true, checks };
+  }
+
+  const lamports = parseLamports(intent.amountLamports);
+  if (lamports === null || lamports === 0n) {
+    return { allowed: false, reasonCode: "POLICY_INVALID_AMOUNT", checks };
+  }
+
+  for (const policy of policies) {
+    if (policy.status !== "active") {
+      checks.push(`policy:${policy.id}:inactive`);
+      continue;
+    }
+
+    checks.push(`policy:${policy.id}:active`);
+    for (const rule of policy.dsl.rules) {
+      switch (rule.kind) {
+        case "allowed_actions": {
+          checks.push(`rule:allowed_actions:${policy.id}`);
+          if (!rule.actions.includes(intent.action)) {
+            return { allowed: false, reasonCode: "POLICY_ACTION_NOT_ALLOWED", checks };
+          }
+          break;
+        }
+        case "max_lamports_per_tx": {
+          checks.push(`rule:max_lamports_per_tx:${policy.id}`);
+          const max = parseLamports(rule.lteLamports);
+          if (max === null || lamports > max) {
+            return { allowed: false, reasonCode: "POLICY_DSL_MAX_PER_TX_EXCEEDED", checks };
+          }
+          break;
+        }
+        case "allowed_mints": {
+          checks.push(`rule:allowed_mints:${policy.id}`);
+          if (intent.action === "swap") {
+            const fromAllowed = !!intent.fromMint && rule.mints.includes(intent.fromMint);
+            const toAllowed = !!intent.toMint && rule.mints.includes(intent.toMint);
+            if (!fromAllowed || !toAllowed) {
+              return { allowed: false, reasonCode: "POLICY_MINT_NOT_ALLOWED", checks };
+            }
+          }
+          break;
+        }
+        case "max_slippage_bps": {
+          checks.push(`rule:max_slippage_bps:${policy.id}`);
+          if (intent.action === "swap") {
+            if (intent.maxSlippageBps === undefined) {
+              return { allowed: false, reasonCode: "POLICY_SWAP_SLIPPAGE_REQUIRED", checks };
+            }
+            if (intent.maxSlippageBps > rule.lteBps) {
+              return { allowed: false, reasonCode: "POLICY_MAX_SLIPPAGE_EXCEEDED", checks };
+            }
+          }
+          break;
+        }
+        default: {
+          return { allowed: false, reasonCode: "POLICY_RULE_NOT_SUPPORTED", checks };
+        }
+      }
+    }
   }
 
   return { allowed: true, checks };

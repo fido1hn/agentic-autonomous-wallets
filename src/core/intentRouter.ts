@@ -2,7 +2,12 @@ import type { ExecutionIntent, ExecutionResult, SignatureResult } from "../types
 import { getActiveAppContext } from "../api/appContext";
 import { writeAuditEvent } from "../observability/auditLog";
 import { buildJupiterSwap } from "../protocols/jupiterAdapter";
-import { evaluateIntent, evaluateSimulation, registerApprovedSpend } from "../wallet/policyEngine";
+import {
+  evaluateAssignedPolicies,
+  evaluateIntent,
+  evaluateSimulation,
+  registerApprovedSpend
+} from "./policyEngine";
 import { getOrCreateWallet } from "../wallet/walletFactory";
 import { getWalletProvider } from "./walletProvider";
 
@@ -39,18 +44,42 @@ async function appendExecutionLogSafe(payload: {
 }
 
 export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionResult> {
+  const { policyService } = getActiveAppContext();
   const wallet = await getOrCreateWallet(intent.agentId);
   const resolvedIntent: ExecutionIntent = {
     ...intent,
     walletAddress: intent.walletAddress ?? wallet.walletRef
   };
 
-  const policyDecision = await evaluateIntent(resolvedIntent);
-  if (!policyDecision.allowed) {
+  const assignedPolicies = await policyService.listAgentWalletPolicies(resolvedIntent.agentId);
+  const assignedPolicyDecision = await evaluateAssignedPolicies(resolvedIntent, assignedPolicies);
+  if (!assignedPolicyDecision.allowed) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: policyDecision.reasonCode ?? "POLICY_REJECTED",
-      policyChecks: policyDecision.checks
+      reasonCode: assignedPolicyDecision.reasonCode ?? "POLICY_REJECTED",
+      policyChecks: assignedPolicyDecision.checks
+    };
+    writeAuditEvent({
+      agentId: resolvedIntent.agentId,
+      status: "rejected",
+      reasonCode: rejected.reasonCode,
+      policyChecks: rejected.policyChecks
+    });
+    await appendExecutionLogSafe({
+      agentId: resolvedIntent.agentId,
+      status: "rejected",
+      reasonCode: rejected.reasonCode,
+      policyChecks: rejected.policyChecks ?? []
+    });
+    return rejected;
+  }
+
+  const baselinePolicyDecision = await evaluateIntent(resolvedIntent);
+  if (!baselinePolicyDecision.allowed) {
+    const rejected: ExecutionResult = {
+      status: "rejected",
+      reasonCode: baselinePolicyDecision.reasonCode ?? "POLICY_REJECTED",
+      policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,
@@ -74,7 +103,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: "TX_BUILD_FAILED",
-      policyChecks: policyDecision.checks
+      policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,
@@ -95,7 +124,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: "TX_BUILD_FAILED",
-      policyChecks: policyDecision.checks
+      policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,
@@ -117,7 +146,11 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: simulationDecision.reasonCode ?? "POLICY_RPC_SIMULATION_FAILED",
-      policyChecks: [...policyDecision.checks, ...simulationDecision.checks]
+      policyChecks: [
+        ...assignedPolicyDecision.checks,
+        ...baselinePolicyDecision.checks,
+        ...simulationDecision.checks
+      ]
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,
@@ -146,7 +179,11 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: "SIGNING_FAILED",
-      policyChecks: [...policyDecision.checks, ...simulationDecision.checks]
+      policyChecks: [
+        ...assignedPolicyDecision.checks,
+        ...baselinePolicyDecision.checks,
+        ...simulationDecision.checks
+      ]
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,
@@ -169,7 +206,11 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     status: "approved",
     provider: signature.provider,
     txSignature: signature.txSignature,
-    policyChecks: [...policyDecision.checks, ...simulationDecision.checks]
+    policyChecks: [
+      ...assignedPolicyDecision.checks,
+      ...baselinePolicyDecision.checks,
+      ...simulationDecision.checks
+    ]
   };
 
   writeAuditEvent({
