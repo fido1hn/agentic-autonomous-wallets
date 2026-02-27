@@ -68,6 +68,7 @@ External demo clients (not part of Aegis core):
 
 - Solana Agent Kit (SAK)
 - OpenClaw
+- OpenAI Agents SDK CLI (`scripts/agent-cli.tsx`)
 - Any agent framework that can make HTTP requests
 
 ## Setup
@@ -126,6 +127,9 @@ bun run demo:devnet
 Run one process per terminal and give each a unique name:
 
 ```bash
+bun run demo:agent
+
+# or explicit names
 bun run scripts/agent-cli.tsx --name agent-alpha
 bun run scripts/agent-cli.tsx --name agent-beta
 bun run scripts/agent-cli.tsx --name agent-gamma

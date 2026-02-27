@@ -16,8 +16,8 @@ Private keys are never returned to agents or app code.
 - Network: Solana devnet
 - Custody/signing backend: Privy server wallets
 - Auth headers for protected routes:
-- `x-agent-id: <agentId>`
-- `x-agent-api-key: <apiKey>`
+  - `x-agent-id: <agentId>`
+  - `x-agent-api-key: <apiKey>`
 
 ## Skills status map
 
@@ -28,12 +28,12 @@ Private keys are never returned to agents or app code.
 - `get_wallet`
 - `execute_intent`
 - `get_execution_history`
-
-### Planned next (design target)
-
 - `create_policy`
 - `list_policies`
 - `assign_policy_to_wallet`
+
+### Planned next (design target)
+
 - `revoke_policy_from_wallet`
 - `rotate_agent_api_key`
 - `get_wallet_balance`
@@ -134,6 +134,49 @@ Returns recent approved/rejected executions.
 - Method: `GET /agents/:agentId/executions?limit=50`
 - Auth: required
 
+### 6) `create_policy`
+
+Creates an Aegis policy in DSL v1 format.
+
+- Method: `POST /policies`
+- Auth: required
+- Body:
+
+```json
+{
+  "name": "allow small swaps",
+  "description": "limit to small swap amounts",
+  "dsl": {
+    "version": "1",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      { "kind": "max_lamports_per_tx", "value": "50000000" }
+    ]
+  }
+}
+```
+
+### 7) `list_policies`
+
+Lists available policies.
+
+- Method: `GET /policies?limit=50`
+- Auth: required
+
+### 8) `assign_policy_to_wallet`
+
+Assigns a policy to an agent wallet with optional priority.
+
+- Method: `POST /agents/:agentId/policies/:policyId`
+- Auth: required
+- Body (optional):
+
+```json
+{
+  "priority": 200
+}
+```
+
 ## Safety contract
 
 Agents must:
@@ -172,8 +215,8 @@ Target behavior:
 
 - User chats with agent: "create a policy"
 - Agent calls Aegis policy endpoints
-- Aegis creates/enforces policy in Privy
-- Wallet actions follow Aegis policy + Privy policy
+- Aegis stores and enforces policy in Aegis runtime
+- Wallet actions follow Aegis policy checks before any signing request
 
 Target policy controls:
 

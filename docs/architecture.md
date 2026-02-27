@@ -22,9 +22,9 @@ Aegis has 4 layers:
 
 Submission flow:
 
-Agent signs up -> gets `agentId` + wallet
+Agent signs up -> gets `agentId` + `apiKey`
 ↓
-Aegis gives that agent its own isolated wallet context
+Agent requests wallet -> gets wallet binding for that `agentId`
 ↓
 Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
@@ -32,7 +32,7 @@ Aegis checks input + policy + simulation
 ↓
 If approved, Aegis requests signature from Privy
 ↓
-Privy signs and returns a signed transaction for broadcast
+Privy signs (and provider path broadcasts) -> Aegis returns tx execution result
 ↓
 Private key never touches agent logic or app code
 
