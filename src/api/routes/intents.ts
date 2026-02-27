@@ -14,14 +14,13 @@ const authHeadersSchema = z.object({
 const executionIntentBodySchema = z
   .object({
     agentId: z.string(),
-    action: z.enum(["transfer", "swap", "stake", "unstake"]),
-    network: z.enum(["solana-devnet", "solana-mainnet"]),
-    lamports: z.string(),
+    action: z.enum(["swap", "rebalance", "transfer"]),
+    amountLamports: z.string(),
     idempotencyKey: z.string().optional(),
     walletAddress: z.string().optional(),
-    tokenMint: z.string().optional(),
-    toAddress: z.string().optional(),
-    slippageBps: z.number().optional(),
+    fromMint: z.string().optional(),
+    toMint: z.string().optional(),
+    maxSlippageBps: z.number().int().min(1).max(10_000).optional(),
   })
   .passthrough();
 

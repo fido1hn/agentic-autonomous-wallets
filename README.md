@@ -209,9 +209,9 @@ Notes:
 
 ### Simple flow
 
-Agent signs up -> gets `agentId` + wallet
+Agent signs up -> gets `agentId` + `apiKey`
 ↓
-Aegis gives that agent its own isolated wallet context
+Agent requests wallet -> gets wallet binding for that `agentId`
 ↓
 Agent sends `execute_intent` requests with `ExecutionIntent`
 ↓
