@@ -121,6 +121,21 @@ bun test
 bun run demo:devnet
 ```
 
+### 5b) Interactive agent CLI demo
+
+Run one process per terminal and give each a unique name:
+
+```bash
+bun run scripts/agent-cli.tsx --name agent-alpha
+bun run scripts/agent-cli.tsx --name agent-beta
+bun run scripts/agent-cli.tsx --name agent-gamma
+```
+
+Then chat naturally in each terminal, e.g.:
+- `register yourself in aegis`
+- `create your wallet`
+- `show your session`
+
 ### 6) Policy preflight
 
 ```bash
