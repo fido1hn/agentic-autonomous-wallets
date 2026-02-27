@@ -1,18 +1,119 @@
-import { Hono } from "hono";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { routeIntent } from "../../core/intentRouter";
 import { validateExecutionIntent } from "../../types/intents";
-import { jsonError, safeParseJson } from "../http";
+import { jsonError } from "../http";
 import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
 
-const intentsRoutes = new Hono();
+const intentsRoutes = new OpenAPIHono();
 
-intentsRoutes.post("/intents/execute", async (c) => {
+const authHeadersSchema = z.object({
+  "x-agent-id": z.string(),
+  "x-agent-api-key": z.string(),
+});
+
+const executionIntentBodySchema = z
+  .object({
+    agentId: z.string(),
+    action: z.enum(["transfer", "swap", "stake", "unstake"]),
+    network: z.enum(["solana-devnet", "solana-mainnet"]),
+    lamports: z.string(),
+    idempotencyKey: z.string().optional(),
+    walletAddress: z.string().optional(),
+    tokenMint: z.string().optional(),
+    toAddress: z.string().optional(),
+    slippageBps: z.number().optional(),
+  })
+  .passthrough();
+
+const intentApprovedSchema = z.object({
+  status: z.literal("approved"),
+  provider: z.literal("privy"),
+  txSignature: z.string(),
+  policyChecks: z.array(z.string()),
+});
+
+const intentRejectedSchema = z.object({
+  status: z.literal("rejected"),
+  reasonCode: z.string(),
+  policyChecks: z.array(z.string()),
+});
+
+const intentValidationErrorSchema = z.object({
+  error: z.object({
+    code: z.literal("INTENT_VALIDATION_FAILED"),
+    message: z.string(),
+    errors: z.array(z.string()),
+  }),
+});
+
+const genericErrorSchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    requestId: z.string(),
+  }),
+});
+
+const executeIntentRoute = createRoute({
+  method: "post",
+  path: "/intents/execute",
+  summary: "Execute an intent through Aegis policy + signing pipeline",
+  request: {
+    headers: authHeadersSchema,
+    body: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: executionIntentBodySchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Intent result",
+      content: {
+        "application/json": {
+          schema: z.union([intentApprovedSchema, intentRejectedSchema]),
+        },
+      },
+    },
+    400: {
+      description: "Intent validation failed",
+      content: {
+        "application/json": {
+          schema: intentValidationErrorSchema,
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: genericErrorSchema,
+        },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": {
+          schema: genericErrorSchema,
+        },
+      },
+    },
+  },
+});
+
+intentsRoutes.openapi(
+  executeIntentRoute,
+  (async (c: any) => {
   const auth = await requireAgentAuth(c);
   if (auth instanceof Response) {
     return auth;
   }
 
-  const input = await safeParseJson<unknown>(c);
+  const input = c.req.valid("json");
   const validated = validateExecutionIntent(input);
   if (!validated.ok || !validated.intent) {
     return c.json(
@@ -38,6 +139,7 @@ intentsRoutes.post("/intents/execute", async (c) => {
   } catch {
     return jsonError(c, 500, "INTERNAL_ERROR", "Failed to execute intent");
   }
-});
+  }) as any,
+);
 
 export { intentsRoutes };

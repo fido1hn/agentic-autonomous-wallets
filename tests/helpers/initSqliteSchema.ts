@@ -42,6 +42,31 @@ export function initSqliteSchema(client: Database): void {
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE daily_spend_counters (
+      id TEXT PRIMARY KEY NOT NULL,
+      agent_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      spent_lamports TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX daily_spend_counters_agent_day_idx
+      ON daily_spend_counters(agent_id, day_key);
+
+    CREATE TABLE intent_idempotency_records (
+      id TEXT PRIMARY KEY NOT NULL,
+      agent_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      result_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX intent_idempotency_records_agent_key_idx
+      ON intent_idempotency_records(agent_id, idempotency_key);
+
     CREATE INDEX idx_agents_status ON agents(status);
     CREATE INDEX idx_agent_api_keys_agent_status ON agent_api_keys(agent_id, status);
     CREATE INDEX idx_execution_logs_agent_created_at ON execution_logs(agent_id, created_at);

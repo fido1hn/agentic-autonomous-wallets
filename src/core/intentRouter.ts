@@ -4,10 +4,11 @@ import { writeAuditEvent } from "../observability/auditLog";
 import { buildJupiterSwap } from "../protocols/jupiterAdapter";
 import {
   evaluateAssignedPolicies,
-  evaluateIntent,
+  evaluateBaselineIntent,
   evaluateSimulation,
-  registerApprovedSpend
+  nowDayKey
 } from "./policyEngine";
+import { ReasonCodes } from "./reasonCodes";
 import { getOrCreateWallet } from "../wallet/walletFactory";
 import { getWalletProvider } from "./walletProvider";
 
@@ -47,8 +48,47 @@ async function appendExecutionLogSafe(payload: {
   }
 }
 
+function parseExecutionResult(raw: string): ExecutionResult | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const result = parsed as Partial<ExecutionResult>;
+    if (result.status === "approved" && typeof result.txSignature === "string" && typeof result.provider === "string") {
+      return {
+        status: "approved",
+        provider: result.provider,
+        txSignature: result.txSignature,
+        policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : []
+      } satisfies ExecutionResult;
+    }
+    if (result.status === "rejected" && typeof result.reasonCode === "string") {
+      return {
+        status: "rejected",
+        reasonCode: result.reasonCode,
+        policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : []
+      } satisfies ExecutionResult;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionResult> {
-  const { policyService } = getActiveAppContext();
+  const { policyService, db } = getActiveAppContext();
+
+  const idempotencyKey = intent.idempotencyKey?.trim();
+  if (idempotencyKey) {
+    const existing = await db.repositories.intentIdempotency.find(intent.agentId, idempotencyKey);
+    if (existing) {
+      const parsed = parseExecutionResult(existing.resultJson);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  }
 
   // Ensure the agent has a wallet binding before any policy/signing checks.
   const wallet = await getOrCreateWallet(intent.agentId);
@@ -63,7 +103,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   if (!assignedPolicyDecision.allowed) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: assignedPolicyDecision.reasonCode ?? "POLICY_REJECTED",
+      reasonCode: assignedPolicyDecision.reasonCode ?? ReasonCodes.policyRejected,
       policyChecks: assignedPolicyDecision.checks
     };
     writeAuditEvent({
@@ -78,15 +118,30 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
   // 2) Enforce baseline Aegis protections (global safety defaults).
-  const baselinePolicyDecision = await evaluateIntent(resolvedIntent);
+  const dayKey = nowDayKey();
+  const dailySpend = await db.repositories.dailySpendCounters.getByAgentAndDay(
+    resolvedIntent.agentId,
+    dayKey
+  );
+  const baselinePolicyDecision = await evaluateBaselineIntent(
+    resolvedIntent,
+    dailySpend?.spentLamports ?? "0"
+  );
   if (!baselinePolicyDecision.allowed) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: baselinePolicyDecision.reasonCode ?? "POLICY_REJECTED",
+      reasonCode: baselinePolicyDecision.reasonCode ?? ReasonCodes.policyRejected,
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -101,6 +156,13 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
@@ -111,7 +173,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   } catch {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: "TX_BUILD_FAILED",
+      reasonCode: ReasonCodes.txBuildFailed,
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -126,13 +188,20 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
   if (!serializedTx) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: "TX_BUILD_FAILED",
+      reasonCode: ReasonCodes.txBuildFailed,
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -147,6 +216,13 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
@@ -155,7 +231,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   if (!simulationDecision.allowed) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: simulationDecision.reasonCode ?? "POLICY_RPC_SIMULATION_FAILED",
+      reasonCode: simulationDecision.reasonCode ?? ReasonCodes.policyRpcSimulationFailed,
       policyChecks: [
         ...assignedPolicyDecision.checks,
         ...baselinePolicyDecision.checks,
@@ -174,6 +250,13 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
@@ -189,7 +272,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   } catch {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: "SIGNING_FAILED",
+      reasonCode: ReasonCodes.signingFailed,
       policyChecks: [
         ...assignedPolicyDecision.checks,
         ...baselinePolicyDecision.checks,
@@ -208,11 +291,22 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       reasonCode: rejected.reasonCode,
       policyChecks: rejected.policyChecks ?? []
     });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(
+        resolvedIntent.agentId,
+        idempotencyKey,
+        JSON.stringify(rejected)
+      );
+    }
     return rejected;
   }
 
-  // 6) Update in-memory spend tracker for baseline daily-cap checks.
-  registerApprovedSpend(resolvedIntent.agentId, resolvedIntent.amountLamports);
+  // 6) Persist approved spend for durable daily-cap enforcement across restarts/instances.
+  await db.repositories.dailySpendCounters.addSpend(
+    resolvedIntent.agentId,
+    dayKey,
+    resolvedIntent.amountLamports
+  );
 
   const approved: ExecutionResult = {
     status: "approved",
@@ -239,6 +333,13 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     txSignature: signature.txSignature,
     policyChecks: approved.policyChecks
   });
+  if (idempotencyKey) {
+    await db.repositories.intentIdempotency.save(
+      resolvedIntent.agentId,
+      idempotencyKey,
+      JSON.stringify(approved)
+    );
+  }
 
   return approved;
 }

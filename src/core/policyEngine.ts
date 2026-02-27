@@ -1,14 +1,6 @@
 import type { PolicyRecord } from "../db/sqlite";
 import type { ExecutionIntent, PolicyDecision } from "../types/intents";
-
-// In-memory daily spend tracker keyed by agent.
-// Good for dev/test; move to DB-backed counters for multi-instance production.
-type DailySpendState = {
-  dayKey: string;
-  spentLamports: bigint;
-};
-
-const spendByAgent = new Map<string, DailySpendState>();
+import { ReasonCodes } from "./reasonCodes";
 
 function parseLamports(value: string): bigint | null {
   try {
@@ -19,42 +11,13 @@ function parseLamports(value: string): bigint | null {
   }
 }
 
-function nowDayKey(): string {
+export function nowDayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 function getDailyCap(): bigint {
   const parsed = parseLamports(process.env.AEGIS_DAILY_LAMPORTS_CAP ?? "5000000000");
   return parsed ?? 5000000000n;
-}
-
-function projectedDailySpend(agentId: string, amount: bigint): bigint {
-  const dayKey = nowDayKey();
-  const current = spendByAgent.get(agentId);
-  if (!current || current.dayKey !== dayKey) {
-    return amount;
-  }
-  return current.spentLamports + amount;
-}
-
-// Called only on approved execution to advance the in-memory daily spend counter.
-export function registerApprovedSpend(agentId: string, amountLamports: string): void {
-  const amount = parseLamports(amountLamports);
-  if (amount === null || amount === 0n) {
-    return;
-  }
-
-  const dayKey = nowDayKey();
-  const current = spendByAgent.get(agentId);
-  if (!current || current.dayKey !== dayKey) {
-    spendByAgent.set(agentId, { dayKey, spentLamports: amount });
-    return;
-  }
-
-  spendByAgent.set(agentId, {
-    dayKey,
-    spentLamports: current.spentLamports + amount
-  });
 }
 
 // Placeholder simulation policy.
@@ -68,12 +31,12 @@ export async function evaluateSimulation(serializedTx: string): Promise<PolicyDe
   }
 
   if (!process.env.SOLANA_RPC) {
-    return { allowed: false, reasonCode: "POLICY_RPC_SIMULATION_UNAVAILABLE", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyRpcSimulationUnavailable, checks };
   }
 
   // Placeholder simulation gate until real signed/unsigned tx simulation wiring is added.
   if (serializedTx.includes("\"simulateFail\":true")) {
-    return { allowed: false, reasonCode: "POLICY_RPC_SIMULATION_FAILED", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyRpcSimulationFailed, checks };
   }
 
   return { allowed: true, checks };
@@ -82,34 +45,42 @@ export async function evaluateSimulation(serializedTx: string): Promise<PolicyDe
 // Baseline Aegis guardrails that always run, even when no custom policy is assigned.
 // These are environment-driven defaults for amount shape, per-tx cap, and daily cap.
 export async function evaluateIntent(intent: ExecutionIntent): Promise<PolicyDecision> {
+  return evaluateBaselineIntent(intent, "0");
+}
+
+export async function evaluateBaselineIntent(
+  intent: ExecutionIntent,
+  currentDailySpentLamports: string
+): Promise<PolicyDecision> {
   const checks: string[] = ["intent_shape"];
 
   if (!intent.agentId) {
-    return { allowed: false, reasonCode: "POLICY_INVALID_AGENT_ID", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyInvalidAgentId, checks };
   }
 
   const lamports = parseLamports(intent.amountLamports);
   if (lamports === null || lamports === 0n) {
-    return { allowed: false, reasonCode: "POLICY_INVALID_AMOUNT", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyInvalidAmount, checks };
   }
 
   checks.push("max_per_tx");
   const maxPerTx = parseLamports(process.env.AEGIS_MAX_LAMPORTS_PER_TX ?? "1000000000");
   if (maxPerTx !== null && lamports > maxPerTx) {
-    return { allowed: false, reasonCode: "POLICY_MAX_PER_TX_EXCEEDED", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyMaxPerTxExceeded, checks };
   }
 
   if (intent.action === "swap") {
     checks.push("token_allowlist");
     if (!intent.fromMint || !intent.toMint) {
-      return { allowed: false, reasonCode: "POLICY_SWAP_MINT_REQUIRED", checks };
+      return { allowed: false, reasonCode: ReasonCodes.policySwapMintRequired, checks };
     }
   }
 
   checks.push("daily_cap");
-  const projected = projectedDailySpend(intent.agentId, lamports);
+  const spent = parseLamports(currentDailySpentLamports) ?? 0n;
+  const projected = spent + lamports;
   if (projected > getDailyCap()) {
-    return { allowed: false, reasonCode: "POLICY_DAILY_CAP_EXCEEDED", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyDailyCapExceeded, checks };
   }
 
   return { allowed: true, checks };
@@ -130,7 +101,7 @@ export async function evaluateAssignedPolicies(
 
   const lamports = parseLamports(intent.amountLamports);
   if (lamports === null || lamports === 0n) {
-    return { allowed: false, reasonCode: "POLICY_INVALID_AMOUNT", checks };
+    return { allowed: false, reasonCode: ReasonCodes.policyInvalidAmount, checks };
   }
 
   for (const policy of policies) {
@@ -147,7 +118,7 @@ export async function evaluateAssignedPolicies(
         case "allowed_actions": {
           checks.push(`rule:allowed_actions:${policy.id}`);
           if (!rule.actions.includes(intent.action)) {
-            return { allowed: false, reasonCode: "POLICY_ACTION_NOT_ALLOWED", checks };
+            return { allowed: false, reasonCode: ReasonCodes.policyActionNotAllowed, checks };
           }
           break;
         }
@@ -155,7 +126,7 @@ export async function evaluateAssignedPolicies(
           checks.push(`rule:max_lamports_per_tx:${policy.id}`);
           const max = parseLamports(rule.lteLamports);
           if (max === null || lamports > max) {
-            return { allowed: false, reasonCode: "POLICY_DSL_MAX_PER_TX_EXCEEDED", checks };
+            return { allowed: false, reasonCode: ReasonCodes.policyDslMaxPerTxExceeded, checks };
           }
           break;
         }
@@ -165,7 +136,7 @@ export async function evaluateAssignedPolicies(
             const fromAllowed = !!intent.fromMint && rule.mints.includes(intent.fromMint);
             const toAllowed = !!intent.toMint && rule.mints.includes(intent.toMint);
             if (!fromAllowed || !toAllowed) {
-              return { allowed: false, reasonCode: "POLICY_MINT_NOT_ALLOWED", checks };
+              return { allowed: false, reasonCode: ReasonCodes.policyMintNotAllowed, checks };
             }
           }
           break;
@@ -174,16 +145,16 @@ export async function evaluateAssignedPolicies(
           checks.push(`rule:max_slippage_bps:${policy.id}`);
           if (intent.action === "swap") {
             if (intent.maxSlippageBps === undefined) {
-              return { allowed: false, reasonCode: "POLICY_SWAP_SLIPPAGE_REQUIRED", checks };
+              return { allowed: false, reasonCode: ReasonCodes.policySwapSlippageRequired, checks };
             }
             if (intent.maxSlippageBps > rule.lteBps) {
-              return { allowed: false, reasonCode: "POLICY_MAX_SLIPPAGE_EXCEEDED", checks };
+              return { allowed: false, reasonCode: ReasonCodes.policyMaxSlippageExceeded, checks };
             }
           }
           break;
         }
         default: {
-          return { allowed: false, reasonCode: "POLICY_RULE_NOT_SUPPORTED", checks };
+          return { allowed: false, reasonCode: ReasonCodes.policyRuleNotSupported, checks };
         }
       }
     }

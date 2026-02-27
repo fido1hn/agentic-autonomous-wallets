@@ -88,4 +88,34 @@ describe("PolicyService", () => {
       "AGENT_WALLET_NOT_FOUND"
     );
   });
+
+  it("applies explicit assignment priority and returns policies in precedence order", async () => {
+    const { agentService, agentWalletService, policyService } = createServices();
+    const agent = await agentService.createAgent({ name: "ordered-policy-agent" });
+    await agentWalletService.createAgentWallet(agent.id);
+
+    const low = await policyService.createPolicy({
+      name: "Low priority policy",
+      dsl: {
+        version: "aegis.policy.v1",
+        rules: [{ kind: "allowed_actions", actions: ["swap"] }]
+      }
+    });
+    const high = await policyService.createPolicy({
+      name: "High priority policy",
+      dsl: {
+        version: "aegis.policy.v1",
+        rules: [{ kind: "max_lamports_per_tx", lteLamports: "1000000" }]
+      }
+    });
+
+    await policyService.assignPolicyToAgentWallet(agent.id, low.id, { priority: 10 });
+    await policyService.assignPolicyToAgentWallet(agent.id, high.id, { priority: 200 });
+
+    const assignments = await db!.repositories.walletPolicyAssignments.listByAgentId(agent.id);
+    expect(assignments[0]?.policyId).toBe(high.id);
+    expect(assignments[0]?.priority).toBe(200);
+    expect(assignments[1]?.policyId).toBe(low.id);
+    expect(assignments[1]?.priority).toBe(10);
+  });
 });

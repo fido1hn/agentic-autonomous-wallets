@@ -120,9 +120,11 @@ describe("policies routes", () => {
     const assignRes = await app.request(`http://localhost/agents/${agent.id}/policies/${created.id}`, {
       method: "POST",
       headers: {
+        "content-type": "application/json",
         "x-agent-id": agent.id,
         "x-agent-api-key": apiKey
-      }
+      },
+      body: JSON.stringify({ priority: 250 })
     });
     expect(assignRes.status).toBe(200);
 
@@ -139,6 +141,9 @@ describe("policies routes", () => {
     };
     expect(assigned.count).toBe(1);
     expect(assigned.data[0]?.id).toBe(created.id);
+
+    const assignments = await db!.repositories.walletPolicyAssignments.listByAgentId(agent.id);
+    expect(assignments[0]?.priority).toBe(250);
   });
 
   it("enforces agent scope on assignment endpoint", async () => {

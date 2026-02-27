@@ -40,12 +40,14 @@ Execution flow in system terms (current runtime):
 
 1. Agent submits `ExecutionIntent`
 2. Aegis resolves wallet binding
-3. Assigned DSL policies are evaluated
+3. Assigned DSL policies are evaluated (ordered by priority)
 4. Baseline Aegis policies are evaluated
 5. Protocol adapter builds transaction
 6. Simulation gate validates tx safety
 7. Provider signs and tx is broadcast
-8. Execution result + checks are logged
+8. Durable spend counters are updated
+9. Execution result + checks are logged
+10. Idempotency record is stored for replay-safe retries
 
 ## 3. Component responsibilities
 
@@ -89,6 +91,9 @@ SQLite stores:
 
 - Agent and wallet metadata
 - Policy references
+- Policy assignment priority per wallet
+- Daily spend counters
+- Idempotency execution records
 - Intent and tx outcomes
 - Rejection reasons
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { PolicyRecord } from "../src/db/sqlite";
 import type { ExecutionIntent } from "../src/types/intents";
-import { evaluateAssignedPolicies } from "../src/core/policyEngine";
+import { evaluateAssignedPolicies, evaluateBaselineIntent } from "../src/core/policyEngine";
 
 function baseIntent(overrides?: Partial<ExecutionIntent>): ExecutionIntent {
   return {
@@ -121,5 +121,14 @@ describe("evaluateAssignedPolicies", () => {
     ]);
 
     expect(result.allowed).toBe(true);
+  });
+});
+
+describe("evaluateBaselineIntent", () => {
+  it("rejects when projected daily spend exceeds cap using persisted current spend", async () => {
+    process.env.AEGIS_DAILY_LAMPORTS_CAP = "100";
+    const result = await evaluateBaselineIntent(baseIntent({ amountLamports: "60" }), "50");
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_DAILY_CAP_EXCEEDED");
   });
 });

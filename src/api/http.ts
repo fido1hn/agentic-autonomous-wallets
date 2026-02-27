@@ -1,7 +1,13 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { REQUEST_ID_CTX_KEY } from "./middleware/requestLogger";
 
 export function getRequestId(c: Context): string {
+  const fromContext = c.get(REQUEST_ID_CTX_KEY);
+  if (typeof fromContext === "string" && fromContext.trim() !== "") {
+    return fromContext;
+  }
+
   const existing = c.req.header("x-request-id");
   if (existing && existing.trim() !== "") {
     return existing.trim();

@@ -6,7 +6,9 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "./schema";
 import { createAgentsRepository } from "./repositories/agentsRepository";
 import { createAgentApiKeysRepository } from "./repositories/agentApiKeysRepository";
+import { createDailySpendCountersRepository } from "./repositories/dailySpendCountersRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
+import { createIntentIdempotencyRepository } from "./repositories/intentIdempotencyRepository";
 import { createPoliciesRepository } from "./repositories/policiesRepository";
 import { createWalletBindingsRepository } from "./repositories/walletBindingsRepository";
 import { createWalletPolicyAssignmentsRepository } from "./repositories/walletPolicyAssignmentsRepository";
@@ -22,8 +24,12 @@ export type {
   CreateAgentApiKeyInput,
   CreateAgentInput,
   CreateExecutionLogInput,
+  DailySpendCounterRecord,
+  DailySpendCounterRepository,
   ExecutionLogRecord,
   ExecutionLogRepository,
+  IntentIdempotencyRecord,
+  IntentIdempotencyRepository,
   CreatePolicyInput,
   PolicyRecord,
   PolicyRepository,
@@ -98,7 +104,9 @@ export function createRepositories(db: BunSQLiteDatabase<typeof schema>): Reposi
     walletBindings: createWalletBindingsRepository(db),
     executionLogs: createExecutionLogsRepository(db),
     policies: createPoliciesRepository(db),
-    walletPolicyAssignments: createWalletPolicyAssignmentsRepository(db)
+    walletPolicyAssignments: createWalletPolicyAssignmentsRepository(db),
+    dailySpendCounters: createDailySpendCountersRepository(db),
+    intentIdempotency: createIntentIdempotencyRepository(db)
   };
 }
 

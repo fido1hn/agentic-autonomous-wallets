@@ -30,7 +30,11 @@ export class PolicyService {
     });
   }
 
-  async assignPolicyToAgentWallet(agentId: string, policyId: string): Promise<void> {
+  async assignPolicyToAgentWallet(
+    agentId: string,
+    policyId: string,
+    options?: { priority?: number }
+  ): Promise<void> {
     const wallet = await this.walletBindings.findByAgentId(agentId);
     if (!wallet) {
       throw new Error("AGENT_WALLET_NOT_FOUND");
@@ -41,7 +45,7 @@ export class PolicyService {
       throw new Error("POLICY_NOT_FOUND");
     }
 
-    await this.walletPolicyAssignments.assign(agentId, policyId);
+    await this.walletPolicyAssignments.assign(agentId, policyId, options);
   }
 
   async listAgentWalletPolicies(agentId: string): Promise<PolicyRecord[]> {

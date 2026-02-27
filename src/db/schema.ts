@@ -1,4 +1,4 @@
-import { sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const agentsTable = sqliteTable("agents", {
   id: text("id")
@@ -74,12 +74,53 @@ export const walletPolicyAssignmentsTable = sqliteTable(
     policyId: text("policy_id")
       .notNull()
       .references(() => policiesTable.id, { onDelete: "cascade" }),
+    priority: integer("priority").notNull().default(100),
     createdAt: text("created_at").notNull(),
   },
   (table) => [
     uniqueIndex("wallet_policy_assignments_agent_policy_idx").on(
       table.agentId,
       table.policyId,
+    ),
+  ],
+);
+
+export const dailySpendCountersTable = sqliteTable(
+  "daily_spend_counters",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agentsTable.id, { onDelete: "cascade" }),
+    dayKey: text("day_key").notNull(),
+    spentLamports: text("spent_lamports").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_spend_counters_agent_day_idx").on(table.agentId, table.dayKey),
+  ],
+);
+
+export const intentIdempotencyRecordsTable = sqliteTable(
+  "intent_idempotency_records",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agentsTable.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    resultJson: text("result_json").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("intent_idempotency_records_agent_key_idx").on(
+      table.agentId,
+      table.idempotencyKey,
     ),
   ],
 );

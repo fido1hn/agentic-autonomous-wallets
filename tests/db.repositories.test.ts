@@ -94,4 +94,25 @@ describe("db repositories", () => {
       ctx.client.close();
     }
   });
+
+  it("atomically accumulates daily spend for the same agent/day", async () => {
+    const ctx = connectSqlite(":memory:");
+    initSqliteSchema(ctx.client);
+
+    try {
+      const repos = createRepositories(ctx.db);
+      const agent = await repos.agents.create({ name: "agent-mm-02", status: "active" });
+      const dayKey = "2026-02-26";
+
+      await repos.dailySpendCounters.addSpend(agent.id, dayKey, "1000");
+      const second = await repos.dailySpendCounters.addSpend(agent.id, dayKey, "2500");
+
+      expect(second.spentLamports).toBe("3500");
+
+      const loaded = await repos.dailySpendCounters.getByAgentAndDay(agent.id, dayKey);
+      expect(loaded?.spentLamports).toBe("3500");
+    } finally {
+      ctx.client.close();
+    }
+  });
 });

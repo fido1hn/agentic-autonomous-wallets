@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import * as schema from "../schema";
 import { walletPolicyAssignmentsTable } from "../schema";
@@ -15,6 +15,7 @@ function toWalletPolicyAssignmentRecord(
     id: row.id,
     agentId: row.agentId,
     policyId: row.policyId,
+    priority: row.priority,
     createdAt: row.createdAt
   };
 }
@@ -23,21 +24,30 @@ export function createWalletPolicyAssignmentsRepository(
   db: BunSQLiteDatabase<typeof schema>
 ): WalletPolicyAssignmentRepository {
   return {
-    async assign(agentId: string, policyId: string): Promise<WalletPolicyAssignmentRecord> {
+    async assign(
+      agentId: string,
+      policyId: string,
+      options?: { priority?: number }
+    ): Promise<WalletPolicyAssignmentRecord> {
       const createdAt = nowIso();
+      const priority = options?.priority ?? 100;
 
       await db
         .insert(walletPolicyAssignmentsTable)
         .values({
           agentId,
           policyId,
+          priority,
           createdAt
         })
-        .onConflictDoNothing({
+        .onConflictDoUpdate({
           target: [
             walletPolicyAssignmentsTable.agentId,
             walletPolicyAssignmentsTable.policyId
-          ]
+          ],
+          set: {
+            priority
+          }
         });
 
       const row = await db.query.walletPolicyAssignmentsTable.findFirst({
@@ -56,7 +66,8 @@ export function createWalletPolicyAssignmentsRepository(
 
     async listByAgentId(agentId: string): Promise<WalletPolicyAssignmentRecord[]> {
       const rows = await db.query.walletPolicyAssignmentsTable.findMany({
-        where: eq(walletPolicyAssignmentsTable.agentId, agentId)
+        where: eq(walletPolicyAssignmentsTable.agentId, agentId),
+        orderBy: [desc(walletPolicyAssignmentsTable.priority), asc(walletPolicyAssignmentsTable.createdAt)]
       });
 
       return rows.map(toWalletPolicyAssignmentRecord);

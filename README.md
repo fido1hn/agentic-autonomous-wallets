@@ -32,6 +32,9 @@ Aegis is the gate between agent decisions and wallet signatures.
 - Programmatic wallet creation per agent
 - Privy-based signing path
 - Policy checks: assigned DSL rules + baseline limits + simulation
+- Explicit policy precedence via assignment priority
+- Durable daily spend accounting (DB-backed)
+- Idempotent intent execution by `agentId + idempotencyKey`
 - Per-tx cap and daily cap controls
 - Structured audit logs for every intent
 
@@ -101,6 +104,11 @@ bun run start
 
 This starts the Hono API server on `http://localhost:3000` by default.
 
+OpenAPI docs are available at:
+
+- `GET /openapi.json` (raw OpenAPI spec)
+- `GET /docs` (Swagger UI)
+
 ### 4) Test
 
 ```bash
@@ -128,9 +136,15 @@ bun run test:privy-live
 ## API endpoints (v1)
 
 - `GET /health`
+- `GET /openapi.json`
+- `GET /docs`
 - `POST /agents`
 - `POST /agents/:agentId/wallet`
 - `GET /agents/:agentId/wallet`
+- `POST /policies`
+- `GET /policies`
+- `POST /agents/:agentId/policies/:policyId`
+- `GET /agents/:agentId/policies`
 - `POST /intents/execute`
 - `GET /agents/:agentId/executions?limit=50`
 
@@ -199,6 +213,7 @@ Private key never touches agent logic or app code
 5. Run simulation gate
 6. Request provider signature + broadcast
 7. Persist decision logs and policy checks
+8. Persist/replay idempotent results for repeated requests
 
 If any step fails, execution is rejected with a reason code.
 
@@ -229,6 +244,14 @@ That means:
 - provider only signs when Aegis already approved
 
 This is the product edge: deterministic intent policy enforcement before signing.
+
+## Canonical reason codes
+
+Canonical reason codes are centralized in:
+
+- `src/core/reasonCodes.ts`
+
+Use these constants for API/UI handling instead of ad-hoc string literals.
 
 ## Terms
 

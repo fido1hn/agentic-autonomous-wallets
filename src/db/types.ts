@@ -7,8 +7,10 @@ export type PolicyStatus = "active" | "disabled" | "archived";
 import type { AegisPolicyDslV1 } from "../types/policy";
 import type {
   agentApiKeysTable,
+  dailySpendCountersTable,
   agentsTable,
   executionLogsTable,
+  intentIdempotencyRecordsTable,
   policiesTable,
   walletBindingsTable,
   walletPolicyAssignmentsTable
@@ -20,6 +22,8 @@ type ExecutionLogRow = typeof executionLogsTable.$inferSelect;
 type AgentApiKeyRow = typeof agentApiKeysTable.$inferSelect;
 type PolicyRow = typeof policiesTable.$inferSelect;
 type WalletPolicyAssignmentRow = typeof walletPolicyAssignmentsTable.$inferSelect;
+type DailySpendCounterRow = typeof dailySpendCountersTable.$inferSelect;
+type IntentIdempotencyRecordRow = typeof intentIdempotencyRecordsTable.$inferSelect;
 
 export type AgentRecord = Omit<AgentRow, "status"> & { status: AgentStatus };
 export type WalletBindingRecord = Omit<WalletBindingRow, "provider"> & { provider: ProviderName };
@@ -29,6 +33,8 @@ export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson"> & {
   dsl: AegisPolicyDslV1;
 };
 export type WalletPolicyAssignmentRecord = WalletPolicyAssignmentRow;
+export type DailySpendCounterRecord = DailySpendCounterRow;
+export type IntentIdempotencyRecord = IntentIdempotencyRecordRow;
 
 export interface ExecutionLogRecord extends Omit<ExecutionLogRow, "status" | "provider" | "policyChecksJson"> {
   status: ExecutionStatus;
@@ -98,8 +104,22 @@ export interface PolicyRepository {
 }
 
 export interface WalletPolicyAssignmentRepository {
-  assign(agentId: string, policyId: string): Promise<WalletPolicyAssignmentRecord>;
+  assign(
+    agentId: string,
+    policyId: string,
+    options?: { priority?: number }
+  ): Promise<WalletPolicyAssignmentRecord>;
   listByAgentId(agentId: string): Promise<WalletPolicyAssignmentRecord[]>;
+}
+
+export interface DailySpendCounterRepository {
+  getByAgentAndDay(agentId: string, dayKey: string): Promise<DailySpendCounterRecord | null>;
+  addSpend(agentId: string, dayKey: string, amountLamports: string): Promise<DailySpendCounterRecord>;
+}
+
+export interface IntentIdempotencyRepository {
+  find(agentId: string, idempotencyKey: string): Promise<IntentIdempotencyRecord | null>;
+  save(agentId: string, idempotencyKey: string, resultJson: string): Promise<IntentIdempotencyRecord>;
 }
 
 export interface Repositories {
@@ -109,4 +129,6 @@ export interface Repositories {
   agentApiKeys: AgentApiKeyRepository;
   policies: PolicyRepository;
   walletPolicyAssignments: WalletPolicyAssignmentRepository;
+  dailySpendCounters: DailySpendCounterRepository;
+  intentIdempotency: IntentIdempotencyRepository;
 }
