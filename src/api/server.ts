@@ -2,6 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
 import { createAppContext, closeAppContext } from "./appContext";
 import { agentsRoutes } from "./routes/agents";
+import { balancesRoutes } from "./routes/balances";
 import { executionRoutes } from "./routes/executions";
 import { healthRoutes } from "./routes/health";
 import { intentsRoutes } from "./routes/intents";
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   app.route("/", healthRoutes);
   app.route("/", agentsRoutes);
   app.route("/", walletsRoutes);
+  app.route("/", balancesRoutes);
   app.route("/", intentsRoutes);
   app.route("/", executionRoutes);
   app.route("/", policiesRoutes);

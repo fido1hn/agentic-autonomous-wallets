@@ -18,6 +18,53 @@ export interface WalletBindingResponse {
   updatedAt: string;
 }
 
+export interface WalletBalanceToken {
+  mint: string;
+  amountAtomic: string;
+  decimals: number;
+  uiAmount: string;
+  ata: string;
+}
+
+export interface WalletBalancesResponse {
+  agentId: string;
+  walletAddress: string;
+  native: {
+    lamports: string;
+    sol: string;
+  };
+  tokens: WalletBalanceToken[];
+  slot: number;
+}
+
+export interface ExecutionIntentRequest {
+  agentId: string;
+  action: "swap" | "transfer";
+  amountAtomic: string;
+  idempotencyKey?: string;
+  walletAddress?: string;
+  fromMint?: string;
+  toMint?: string;
+  maxSlippageBps?: number;
+  transferAsset?: "native" | "spl";
+  recipientAddress?: string;
+  mintAddress?: string;
+}
+
+export type ExecutionResultResponse =
+  | {
+      status: "approved";
+      provider: "privy";
+      txSignature: string;
+      policyChecks: string[];
+    }
+  | {
+      status: "rejected";
+      reasonCode: string;
+      reasonDetail?: string;
+      policyChecks?: string[];
+    };
+
 export interface AgentSession {
   name: string;
   agentId?: string;

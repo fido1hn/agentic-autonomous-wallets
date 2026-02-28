@@ -1,4 +1,5 @@
 import { Connection } from "@solana/web3.js";
+import { classifySolanaFailure } from "../core/solanaFailure";
 import type { WalletProvider } from "../core/walletProvider";
 import type { SignatureResult } from "../types/intents";
 import { getPrivyClient } from "./privyClient";
@@ -39,7 +40,17 @@ export const privyProvider: WalletProvider = {
       throw new Error("PRIVY_SIGN_ERROR: missing signed transaction");
     }
 
-    const txSignature = await broadcastSignedTransaction(signedTx);
+    let txSignature: string;
+    try {
+      txSignature = await broadcastSignedTransaction(signedTx);
+    } catch (error) {
+      const classified = classifySolanaFailure(
+        error,
+        "SIGNING_FAILED",
+        "Provider signing or broadcast failed."
+      );
+      throw new Error(classified.reasonCode + (classified.reasonDetail ? `: ${classified.reasonDetail}` : ""));
+    }
 
     return { txSignature, provider: "privy" };
   }

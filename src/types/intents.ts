@@ -4,11 +4,15 @@ export type SerializedTransaction = string;
 
 export interface ExecutionIntent {
   agentId: string;
-  action: "swap" | "rebalance" | "transfer";
+  action: "swap" | "transfer";
   walletAddress?: string;
+  amountAtomic: string;
+  transferAsset?: "native" | "spl";
+  recipientAddress?: string;
+  mintAddress?: string;
+  // Legacy compatibility during migration to amountAtomic.
   fromMint?: string;
   toMint?: string;
-  amountLamports: string;
   maxSlippageBps?: number;
   idempotencyKey?: string;
 }
@@ -16,6 +20,7 @@ export interface ExecutionIntent {
 export interface PolicyDecision {
   allowed: boolean;
   reasonCode?: string;
+  reasonDetail?: string;
   checks: string[];
 }
 
@@ -34,6 +39,7 @@ export type ExecutionResult =
   | {
       status: "rejected";
       reasonCode: string;
+      reasonDetail?: string;
       policyChecks?: string[];
     };
 
@@ -52,7 +58,17 @@ function asString(value: unknown): string | null {
 }
 
 function parseAction(value: unknown): ExecutionIntent["action"] | null {
-  if (value === "swap" || value === "rebalance" || value === "transfer") {
+  if (value === "swap" || value === "transfer") {
+    return value;
+  }
+  return null;
+}
+
+function parseTransferAsset(value: unknown): ExecutionIntent["transferAsset"] | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (value === "native" || value === "spl") {
     return value;
   }
   return null;
@@ -92,15 +108,23 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
     errors.push("ACTION_INVALID");
   }
 
-  const amountLamports = parsePositiveIntegerString(payload.amountLamports);
-  if (!amountLamports) {
-    errors.push("AMOUNT_LAMPORTS_INVALID");
+  const amountAtomic =
+    parsePositiveIntegerString(payload.amountAtomic) ??
+    parsePositiveIntegerString(payload.amountLamports);
+  if (!amountAtomic) {
+    errors.push("AMOUNT_ATOMIC_INVALID");
   }
 
   const idempotencyKey = asString(payload.idempotencyKey) ?? undefined;
   const walletAddress = asString(payload.walletAddress) ?? undefined;
+  const recipientAddress = asString(payload.recipientAddress) ?? undefined;
+  const mintAddress = asString(payload.mintAddress) ?? undefined;
   const fromMint = asString(payload.fromMint) ?? undefined;
   const toMint = asString(payload.toMint) ?? undefined;
+  const transferAsset = parseTransferAsset(payload.transferAsset) ?? undefined;
+  if (payload.transferAsset !== undefined && !transferAsset) {
+    errors.push("TRANSFER_ASSET_INVALID");
+  }
 
   let maxSlippageBps: number | undefined;
   if (payload.maxSlippageBps !== undefined) {
@@ -125,6 +149,18 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
     }
   }
 
+  if (action === "transfer") {
+    if (!recipientAddress) {
+      errors.push("RECIPIENT_ADDRESS_REQUIRED_FOR_TRANSFER");
+    }
+    if (!transferAsset) {
+      errors.push("TRANSFER_ASSET_REQUIRED");
+    }
+    if (transferAsset === "spl" && !mintAddress) {
+      errors.push("MINT_ADDRESS_REQUIRED_FOR_SPL_TRANSFER");
+    }
+  }
+
   if (errors.length > 0) {
     return { ok: false, errors };
   }
@@ -135,7 +171,10 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
     intent: {
       agentId: agentId as string,
       action: action as ExecutionIntent["action"],
-      amountLamports: amountLamports as string,
+      amountAtomic: amountAtomic as string,
+      transferAsset,
+      recipientAddress,
+      mintAddress,
       fromMint,
       toMint,
       walletAddress,

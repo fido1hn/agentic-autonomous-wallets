@@ -26,7 +26,11 @@ Private keys are never returned to agents or app code.
 - `create_agent`
 - `create_wallet`
 - `get_wallet`
+- `get_wallet_balance`
 - `execute_intent`
+- `transfer_sol`
+- `transfer_spl`
+- `swap_tokens`
 - `get_execution_history`
 - `create_policy`
 - `list_policies`
@@ -36,9 +40,6 @@ Private keys are never returned to agents or app code.
 
 - `revoke_policy_from_wallet`
 - `rotate_agent_api_key`
-- `get_wallet_balance`
-- `transfer_sol`
-- `transfer_spl`
 - `call_program`
 
 `Planned` skills are intentionally listed so external agents can align early, but they are not guaranteed until endpoints exist.
@@ -87,6 +88,7 @@ Creates wallet binding for an agent.
 {
   "agentId": "30688291-4afd-413c-aa26-434721afea45",
   "walletRef": "wlt_...",
+  "walletAddress": "7YttLkH4kKo3aonMh8M73PvvrLpzjAU6RzG32KzBSSMS",
   "provider": "privy",
   "updatedAt": "2026-02-25T22:32:24.821Z"
 }
@@ -115,7 +117,7 @@ Swap example:
   "action": "swap",
   "fromMint": "So11111111111111111111111111111111111111112",
   "toMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "amountLamports": "1000000",
+  "amountAtomic": "1000000",
   "maxSlippageBps": 100,
   "idempotencyKey": "9c8d8ef0-9d6f-4d2f-bf1f-278380d2e0d7"
 }
@@ -127,14 +129,71 @@ Expected behavior:
 - Approved intent goes to Privy for signing
 - Rejected intent returns explicit reason code
 
-### 5) `get_execution_history`
+### 5) `get_wallet_balance`
+
+Returns current native SOL and SPL token balances for the agent wallet.
+
+- Method: `GET /agents/:agentId/balances`
+- Auth: required
+
+### 6) `transfer_sol`
+
+Semantic agent tool that wraps `POST /intents/execute`.
+
+- Underlying body:
+
+```json
+{
+  "agentId": "30688291-4afd-413c-aa26-434721afea45",
+  "action": "transfer",
+  "transferAsset": "native",
+  "recipientAddress": "6iQv3Lxw9Q5XV1fV64D7Bqjofu5pY88MtXgFp16psNTJ",
+  "amountAtomic": "5000"
+}
+```
+
+### 7) `transfer_spl`
+
+Semantic agent tool that wraps `POST /intents/execute`.
+
+- Underlying body:
+
+```json
+{
+  "agentId": "30688291-4afd-413c-aa26-434721afea45",
+  "action": "transfer",
+  "transferAsset": "spl",
+  "recipientAddress": "6iQv3Lxw9Q5XV1fV64D7Bqjofu5pY88MtXgFp16psNTJ",
+  "mintAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "amountAtomic": "1000"
+}
+```
+
+### 8) `swap_tokens`
+
+Semantic agent tool that wraps `POST /intents/execute`.
+
+- Underlying body:
+
+```json
+{
+  "agentId": "30688291-4afd-413c-aa26-434721afea45",
+  "action": "swap",
+  "fromMint": "So11111111111111111111111111111111111111112",
+  "toMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "amountAtomic": "1000000",
+  "maxSlippageBps": 100
+}
+```
+
+### 9) `get_execution_history`
 
 Returns recent approved/rejected executions.
 
 - Method: `GET /agents/:agentId/executions?limit=50`
 - Auth: required
 
-### 6) `create_policy`
+### 10) `create_policy`
 
 Creates an Aegis policy in DSL v1 format.
 
@@ -156,14 +215,14 @@ Creates an Aegis policy in DSL v1 format.
 }
 ```
 
-### 7) `list_policies`
+### 11) `list_policies`
 
 Lists available policies.
 
 - Method: `GET /policies?limit=50`
 - Auth: required
 
-### 8) `assign_policy_to_wallet`
+### 12) `assign_policy_to_wallet`
 
 Assigns a policy to an agent wallet with optional priority.
 
@@ -208,6 +267,17 @@ All API errors use:
 ```
 
 Agents should log `requestId` for debugging and audit.
+
+Rejected intent results can also include:
+
+```json
+{
+  "status": "rejected",
+  "reasonCode": "INSUFFICIENT_FUNDS",
+  "reasonDetail": "Wallet does not have enough balance to complete this action.",
+  "policyChecks": ["rpc_simulation"]
+}
+```
 
 ## Policy direction (planned)
 

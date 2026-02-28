@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { PolicyRecord } from "../src/db/sqlite";
 import type { ExecutionIntent } from "../src/types/intents";
-import { evaluateAssignedPolicies, evaluateBaselineIntent } from "../src/core/policyEngine";
+import {
+  evaluateAssignedPolicies,
+  evaluateBaselineIntent,
+  evaluateSimulation,
+  setSimulateSerializedTransactionForTests
+} from "../src/core/policyEngine";
 
 function baseIntent(overrides?: Partial<ExecutionIntent>): ExecutionIntent {
   return {
@@ -9,7 +14,7 @@ function baseIntent(overrides?: Partial<ExecutionIntent>): ExecutionIntent {
     action: "swap",
     fromMint: "So11111111111111111111111111111111111111112",
     toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    amountLamports: "1000000",
+    amountAtomic: "1000000",
     maxSlippageBps: 100,
     ...overrides
   };
@@ -53,7 +58,7 @@ describe("evaluateAssignedPolicies", () => {
   });
 
   it("rejects when max lamports per tx rule is exceeded", async () => {
-    const result = await evaluateAssignedPolicies(baseIntent({ amountLamports: "2000000" }), [
+    const result = await evaluateAssignedPolicies(baseIntent({ amountAtomic: "2000000" }), [
       policyRecord({
         dsl: {
           version: "aegis.policy.v1",
@@ -122,13 +127,104 @@ describe("evaluateAssignedPolicies", () => {
 
     expect(result.allowed).toBe(true);
   });
+
+  it("applies allowed_mints rule to SPL transfers", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "spl",
+        recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
+        mintAddress: "Mint111111111111111111111111111111111111111",
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v1",
+            rules: [{ kind: "allowed_mints", mints: ["OtherMint11111111111111111111111111111111111"] }]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_MINT_NOT_ALLOWED");
+  });
 });
 
 describe("evaluateBaselineIntent", () => {
   it("rejects when projected daily spend exceeds cap using persisted current spend", async () => {
     process.env.AEGIS_DAILY_LAMPORTS_CAP = "100";
-    const result = await evaluateBaselineIntent(baseIntent({ amountLamports: "60" }), "50");
+    const result = await evaluateBaselineIntent(baseIntent({ amountAtomic: "60" }), "50");
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_DAILY_CAP_EXCEEDED");
+  });
+
+  it("rejects transfer when recipient is missing", async () => {
+    const result = await evaluateBaselineIntent(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "native",
+        recipientAddress: undefined,
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      "0"
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("TRANSFER_RECIPIENT_REQUIRED");
+  });
+
+  it("rejects SPL transfer when mint is missing", async () => {
+    const result = await evaluateBaselineIntent(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "spl",
+        recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
+        mintAddress: undefined,
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      "0"
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("TRANSFER_MINT_REQUIRED");
+  });
+
+  it("rejects transfer when recipient equals wallet address", async () => {
+    const walletAddress = "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L";
+    const result = await evaluateBaselineIntent(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "native",
+        walletAddress,
+        recipientAddress: walletAddress,
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      "0"
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("TRANSFER_SELF_NOT_ALLOWED");
+    expect(result.reasonDetail).toBe("Recipient address must be different from the agent wallet address.");
+  });
+});
+
+describe("evaluateSimulation", () => {
+  it("maps insufficient funds simulation failures to a stable reason code", async () => {
+    setSimulateSerializedTransactionForTests(async () => {
+      throw new Error("insufficient funds for fee");
+    });
+
+    const result = await evaluateSimulation("dGVzdA==");
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("INSUFFICIENT_FUNDS");
+    expect(result.reasonDetail).toBe("Wallet does not have enough balance to complete this action.");
+    setSimulateSerializedTransactionForTests(null);
   });
 });

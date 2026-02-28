@@ -11,7 +11,7 @@ async function main(): Promise<void> {
       action: "swap",
       fromMint: "So11111111111111111111111111111111111111112",
       toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      amountLamports: "1000000",
+      amountAtomic: "1000000",
       maxSlippageBps: 100
     });
 
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
       action: "swap",
       fromMint: "So11111111111111111111111111111111111111112",
       toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      amountLamports: "9000000000000",
+      amountAtomic: "9000000000000",
       maxSlippageBps: 100
     });
 

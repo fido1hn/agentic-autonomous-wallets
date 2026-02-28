@@ -2,6 +2,9 @@ import type {
   AegisApiErrorPayload,
   CreateAgentRequest,
   CreateAgentResponse,
+  ExecutionIntentRequest,
+  ExecutionResultResponse,
+  WalletBalancesResponse,
   WalletBindingResponse,
 } from "./types";
 
@@ -40,6 +43,83 @@ export class AegisApiClient {
     return this.request<WalletBindingResponse>(`/agents/${agentId}/wallet`, {
       method: "GET",
       headers: this.authHeaders(agentId, apiKey),
+    });
+  }
+
+  async getBalances(agentId: string, apiKey: string): Promise<WalletBalancesResponse> {
+    return this.request<WalletBalancesResponse>(`/agents/${agentId}/balances`, {
+      method: "GET",
+      headers: this.authHeaders(agentId, apiKey),
+    });
+  }
+
+  async executeIntent(agentId: string, apiKey: string, intent: ExecutionIntentRequest): Promise<ExecutionResultResponse> {
+    return this.request<ExecutionResultResponse>("/intents/execute", {
+      method: "POST",
+      headers: this.authHeaders(agentId, apiKey),
+      body: JSON.stringify(intent),
+    });
+  }
+
+  async transferSol(
+    agentId: string,
+    apiKey: string,
+    input: {
+      recipientAddress: string;
+      amountLamports: string;
+      idempotencyKey?: string;
+    }
+  ): Promise<ExecutionResultResponse> {
+    return this.executeIntent(agentId, apiKey, {
+      agentId,
+      action: "transfer",
+      transferAsset: "native",
+      recipientAddress: input.recipientAddress,
+      amountAtomic: input.amountLamports,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
+  async transferSpl(
+    agentId: string,
+    apiKey: string,
+    input: {
+      recipientAddress: string;
+      mintAddress: string;
+      amountAtomic: string;
+      idempotencyKey?: string;
+    }
+  ): Promise<ExecutionResultResponse> {
+    return this.executeIntent(agentId, apiKey, {
+      agentId,
+      action: "transfer",
+      transferAsset: "spl",
+      recipientAddress: input.recipientAddress,
+      mintAddress: input.mintAddress,
+      amountAtomic: input.amountAtomic,
+      idempotencyKey: input.idempotencyKey,
+    });
+  }
+
+  async swapTokens(
+    agentId: string,
+    apiKey: string,
+    input: {
+      fromMint: string;
+      toMint: string;
+      amountLamports: string;
+      maxSlippageBps?: number;
+      idempotencyKey?: string;
+    }
+  ): Promise<ExecutionResultResponse> {
+    return this.executeIntent(agentId, apiKey, {
+      agentId,
+      action: "swap",
+      fromMint: input.fromMint,
+      toMint: input.toMint,
+      amountAtomic: input.amountLamports,
+      maxSlippageBps: input.maxSlippageBps,
+      idempotencyKey: input.idempotencyKey,
     });
   }
 
@@ -84,4 +164,3 @@ export class AegisApiClient {
     }
   }
 }
-

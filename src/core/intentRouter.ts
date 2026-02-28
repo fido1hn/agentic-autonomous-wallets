@@ -2,6 +2,7 @@ import type { ExecutionIntent, ExecutionResult, SignatureResult } from "../types
 import { getActiveAppContext } from "../api/appContext";
 import { writeAuditEvent } from "../observability/auditLog";
 import { buildJupiterSwap } from "../protocols/jupiterAdapter";
+import { buildSolTransfer, buildSplTransfer } from "../protocols/solanaTransferAdapter";
 import {
   evaluateAssignedPolicies,
   evaluateBaselineIntent,
@@ -9,18 +10,47 @@ import {
   nowDayKey
 } from "./policyEngine";
 import { ReasonCodes } from "./reasonCodes";
+import { classifySolanaFailure } from "./solanaFailure";
 import { getOrCreateWallet } from "../wallet/walletFactory";
 import { getWalletProvider } from "./walletProvider";
 
+function resolveReasonCode(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const known = Object.values(ReasonCodes);
+    if (known.includes(error.message as (typeof ReasonCodes)[keyof typeof ReasonCodes])) {
+      return error.message;
+    }
+  }
+  return fallback;
+}
+
+function resolveReasonDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+  const separator = error.message.indexOf(": ");
+  if (separator === -1) {
+    return undefined;
+  }
+  return error.message.slice(separator + 2);
+}
+
 // Builds a serialized transaction payload from the normalized intent.
-// Swap uses the Jupiter adapter; other actions keep placeholder encoding for now.
+// Transaction builders are action-specific and always return base64 serialized transactions.
 async function buildSerializedTransaction(intent: ExecutionIntent): Promise<string> {
   if (intent.action === "swap") {
     return buildJupiterSwap(intent);
   }
 
-  // Placeholder serialization for non-swap actions until protocol adapters are added.
-  return JSON.stringify(intent);
+  if (intent.action === "transfer" && intent.transferAsset === "native") {
+    return buildSolTransfer(intent);
+  }
+
+  if (intent.action === "transfer" && intent.transferAsset === "spl") {
+    return buildSplTransfer(intent);
+  }
+
+  throw new Error(ReasonCodes.unsupportedIntentAction);
 }
 
 // Best-effort audit persistence to DB.
@@ -67,6 +97,7 @@ function parseExecutionResult(raw: string): ExecutionResult | null {
       return {
         status: "rejected",
         reasonCode: result.reasonCode,
+        reasonDetail: typeof result.reasonDetail === "string" ? result.reasonDetail : undefined,
         policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : []
       } satisfies ExecutionResult;
     }
@@ -92,9 +123,34 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
 
   // Ensure the agent has a wallet binding before any policy/signing checks.
   const wallet = await getOrCreateWallet(intent.agentId);
+  const resolvedWalletAddress = intent.walletAddress ?? wallet.walletAddress;
+  if (!resolvedWalletAddress) {
+    const rejected: ExecutionResult = {
+      status: "rejected",
+      reasonCode: ReasonCodes.walletAddressUnavailable,
+      reasonDetail: "Wallet address is not available for this agent wallet binding.",
+      policyChecks: []
+    };
+    writeAuditEvent({
+      agentId: intent.agentId,
+      status: "rejected",
+      reasonCode: rejected.reasonCode,
+      policyChecks: rejected.policyChecks
+    });
+    await appendExecutionLogSafe({
+      agentId: intent.agentId,
+      status: "rejected",
+      reasonCode: rejected.reasonCode,
+      policyChecks: []
+    });
+    if (idempotencyKey) {
+      await db.repositories.intentIdempotency.save(intent.agentId, idempotencyKey, JSON.stringify(rejected));
+    }
+    return rejected;
+  }
   const resolvedIntent: ExecutionIntent = {
     ...intent,
-    walletAddress: intent.walletAddress ?? wallet.walletRef
+    walletAddress: resolvedWalletAddress
   };
 
   // 1) Enforce wallet-assigned DSL policies (user-configured controls).
@@ -104,6 +160,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: assignedPolicyDecision.reasonCode ?? ReasonCodes.policyRejected,
+      reasonDetail: assignedPolicyDecision.reasonDetail,
       policyChecks: assignedPolicyDecision.checks
     };
     writeAuditEvent({
@@ -142,6 +199,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: baselinePolicyDecision.reasonCode ?? ReasonCodes.policyRejected,
+      reasonDetail: baselinePolicyDecision.reasonDetail,
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -170,10 +228,11 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   let serializedTx = "";
   try {
     serializedTx = await buildSerializedTransaction(resolvedIntent);
-  } catch {
+  } catch (error) {
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: ReasonCodes.txBuildFailed,
+      reasonCode: resolveReasonCode(error, ReasonCodes.txBuildFailed),
+      reasonDetail: resolveReasonDetail(error),
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -202,6 +261,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: ReasonCodes.txBuildFailed,
+      reasonDetail: "Transaction builder returned an empty payload.",
       policyChecks: [...assignedPolicyDecision.checks, ...baselinePolicyDecision.checks]
     };
     writeAuditEvent({
@@ -232,6 +292,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     const rejected: ExecutionResult = {
       status: "rejected",
       reasonCode: simulationDecision.reasonCode ?? ReasonCodes.policyRpcSimulationFailed,
+      reasonDetail: simulationDecision.reasonDetail,
       policyChecks: [
         ...assignedPolicyDecision.checks,
         ...baselinePolicyDecision.checks,
@@ -269,10 +330,16 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       walletRef: wallet.walletRef,
       serializedTx
     });
-  } catch {
+  } catch (error) {
+    const classified = classifySolanaFailure(
+      error,
+      ReasonCodes.signingFailed,
+      "Provider signing or broadcast failed."
+    );
     const rejected: ExecutionResult = {
       status: "rejected",
-      reasonCode: ReasonCodes.signingFailed,
+      reasonCode: classified.reasonCode,
+      reasonDetail: classified.reasonDetail ?? resolveReasonDetail(error),
       policyChecks: [
         ...assignedPolicyDecision.checks,
         ...baselinePolicyDecision.checks,
@@ -305,7 +372,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   await db.repositories.dailySpendCounters.addSpend(
     resolvedIntent.agentId,
     dayKey,
-    resolvedIntent.amountLamports
+    resolvedIntent.amountAtomic
   );
 
   const approved: ExecutionResult = {

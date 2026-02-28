@@ -8,7 +8,7 @@ function mockSerializedSwap(intent: ExecutionIntent): string {
     walletAddress: intent.walletAddress,
     fromMint: intent.fromMint,
     toMint: intent.toMint,
-    amountLamports: intent.amountLamports,
+    amountAtomic: intent.amountAtomic,
     maxSlippageBps: intent.maxSlippageBps ?? 100
   });
 }
@@ -26,7 +26,7 @@ export async function buildJupiterSwap(intent: ExecutionIntent): Promise<Seriali
     const quoteParams = new URLSearchParams({
       inputMint: intent.fromMint,
       outputMint: intent.toMint,
-      amount: intent.amountLamports,
+      amount: intent.amountAtomic,
       slippageBps: String(intent.maxSlippageBps ?? 100)
     });
 

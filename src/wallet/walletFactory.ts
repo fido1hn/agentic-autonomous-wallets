@@ -3,6 +3,7 @@ import { getActiveAppContext } from "../api/appContext";
 export interface WalletDescriptor {
   agentId: string;
   walletRef: string;
+  walletAddress?: string;
 }
 
 export async function getOrCreateWallet(agentId: string): Promise<WalletDescriptor> {
@@ -11,6 +12,7 @@ export async function getOrCreateWallet(agentId: string): Promise<WalletDescript
 
   return {
     agentId: wallet.agentId,
-    walletRef: wallet.walletRef
+    walletRef: wallet.walletRef,
+    walletAddress: wallet.walletAddress
   };
 }

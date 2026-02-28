@@ -160,6 +160,7 @@ bun run test:privy-live
 - `POST /agents`
 - `POST /agents/:agentId/wallet`
 - `GET /agents/:agentId/wallet`
+- `GET /agents/:agentId/balances`
 - `POST /policies`
 - `GET /policies`
 - `POST /agents/:agentId/policies/:policyId`
@@ -236,6 +237,17 @@ Private key never touches agent logic or app code
 
 If any step fails, execution is rejected with a reason code.
 
+Typical rejected write responses now include a stable `reasonCode` plus optional `reasonDetail`, for example:
+
+```json
+{
+  "status": "rejected",
+  "reasonCode": "INSUFFICIENT_FUNDS",
+  "reasonDetail": "Wallet does not have enough balance to complete this action.",
+  "policyChecks": ["rpc_simulation"]
+}
+```
+
 ### ExecutionIntent example
 
 ```json
@@ -244,11 +256,22 @@ If any step fails, execution is rejected with a reason code.
   "action": "swap",
   "fromMint": "So11111111111111111111111111111111111111112",
   "toMint": "<SPL_MINT>",
-  "amountLamports": "50000000",
+  "amountAtomic": "50000000",
   "maxSlippageBps": 100,
   "idempotencyKey": "9c8d8ef0-9d6f-4d2f-bf1f-278380d2e0d7"
 }
 ```
+
+### Manual devnet demo sequence
+
+1. Create 3 agents
+2. Create 3 wallets
+3. Fund one or more wallet addresses on devnet
+4. Ask one agent for its balance
+5. Ask one agent to transfer SOL to another
+6. Ask one agent to transfer an SPL token
+7. Ask one agent to swap through Jupiter
+8. Inspect execution logs for approved/rejected runs
 
 ## Why Aegis is the core security layer
 

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AegisApiClient, AegisApiError } from "../src/demo/agent/AegisApiClient";
 import { loadSkillsDocument } from "../src/demo/agent/skillsLoader";
 import { createAgentSession } from "../src/demo/agent/session";
+import type { ExecutionResultResponse } from "../src/demo/agent/types";
 
 interface CliConfig {
   name: string;
@@ -60,7 +61,7 @@ function buildInstructions(skillsDoc: string): string {
   return [
     "You are an autonomous wallet assistant for Aegis.",
     "Do normal conversation naturally.",
-    "Only call tools when user asks for Aegis operations (register, wallet, session).",
+    "Only call tools when user asks for Aegis operations (register, wallet, balances, transfers, swaps, session).",
     "Use tools for wallet/account operations; do not invent API capabilities.",
     "Keep responses concise and operational unless user asks for detail.",
     "Never claim access to private keys.",
@@ -91,6 +92,17 @@ function statusColor(status: ToolLine["status"]): "green" | "red" | "yellow" {
   return "yellow";
 }
 
+function renderExecutionResult(result: ExecutionResultResponse): string {
+  if (result.status === "approved") {
+    return `approved txSignature=${result.txSignature}`;
+  }
+  return `rejected reasonCode=${result.reasonCode}${result.reasonDetail ? ` detail="${result.reasonDetail}"` : ""}`;
+}
+
+function createIdempotencyKey(): string {
+  return crypto.randomUUID();
+}
+
 function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: string }) {
   const { exit } = useApp();
   const session = useMemo(() => createAgentSession(config.name), [config.name]);
@@ -116,6 +128,17 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
   }, []);
 
   const api = useMemo(() => new AegisApiClient(config.baseUrl), [config.baseUrl]);
+
+  const requireSession = useCallback(() => {
+    const state = session.get();
+    if (!state.agentId || !state.apiKey) {
+      throw new Error("Missing session credentials. Call create_agent first.");
+    }
+    if (!state.walletRef) {
+      throw new Error("Missing wallet binding. Call create_wallet first.");
+    }
+    return state;
+  }, [session]);
 
   const createAgentTool = useMemo(
     () =>
@@ -187,15 +210,126 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
     [session]
   );
 
+  const getWalletBalanceTool = useMemo(
+    () =>
+      tool({
+        name: "get_wallet_balance",
+        description: "Fetch native SOL and SPL token balances for this agent wallet.",
+        parameters: z.object({}),
+        execute: async () => {
+          const state = requireSession();
+          const balances = await api.getBalances(state.agentId!, state.apiKey!);
+          addToolEvent("get_wallet_balance", "ok", `sol=${balances.native.sol} tokens=${balances.tokens.length}`);
+          return balances;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const transferSolTool = useMemo(
+    () =>
+      tool({
+        name: "transfer_sol",
+        description: "Transfer native SOL (lamports) from this wallet to another Solana address.",
+        parameters: z.object({
+          recipientAddress: z.string(),
+          amountLamports: z.string(),
+        }),
+        execute: async ({ recipientAddress, amountLamports }) => {
+          const state = requireSession();
+          const result = await api.transferSol(state.agentId!, state.apiKey!, {
+            recipientAddress,
+            amountLamports,
+            idempotencyKey: createIdempotencyKey(),
+          });
+          addToolEvent("transfer_sol", result.status === "approved" ? "ok" : "error", renderExecutionResult(result));
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const transferSplTool = useMemo(
+    () =>
+      tool({
+        name: "transfer_spl",
+        description: "Transfer SPL tokens from this wallet to another Solana address.",
+        parameters: z.object({
+          recipientAddress: z.string(),
+          mintAddress: z.string(),
+          amountAtomic: z.string(),
+        }),
+        execute: async ({ recipientAddress, mintAddress, amountAtomic }) => {
+          const state = requireSession();
+          const result = await api.transferSpl(state.agentId!, state.apiKey!, {
+            recipientAddress,
+            mintAddress,
+            amountAtomic,
+            idempotencyKey: createIdempotencyKey(),
+          });
+          addToolEvent("transfer_spl", result.status === "approved" ? "ok" : "error", renderExecutionResult(result));
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const swapTokensTool = useMemo(
+    () =>
+      tool({
+        name: "swap_tokens",
+        description: "Execute a Jupiter token swap from one mint to another for this wallet.",
+        parameters: z.object({
+          fromMint: z.string(),
+          toMint: z.string(),
+          amountLamports: z.string(),
+        }),
+        execute: async ({ fromMint, toMint, amountLamports }) => {
+          const state = requireSession();
+          const result = await api.swapTokens(state.agentId!, state.apiKey!, {
+            fromMint,
+            toMint,
+            amountLamports,
+            maxSlippageBps: 100,
+            idempotencyKey: createIdempotencyKey(),
+          });
+          addToolEvent("swap_tokens", result.status === "approved" ? "ok" : "error", renderExecutionResult(result));
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
   const agent = useMemo(
     () =>
       new Agent({
         name: `Aegis Demo Agent (${config.name})`,
         instructions: buildInstructions(skillsDoc),
         model: config.model,
-        tools: [createAgentTool, createWalletTool, getWalletTool, showSessionTool],
+        tools: [
+          createAgentTool,
+          createWalletTool,
+          getWalletTool,
+          showSessionTool,
+          getWalletBalanceTool,
+          transferSolTool,
+          transferSplTool,
+          swapTokensTool,
+        ],
       }),
-    [config.model, config.name, createAgentTool, createWalletTool, getWalletTool, showSessionTool, skillsDoc]
+    [
+      config.model,
+      config.name,
+      createAgentTool,
+      createWalletTool,
+      getWalletTool,
+      showSessionTool,
+      getWalletBalanceTool,
+      transferSolTool,
+      transferSplTool,
+      swapTokensTool,
+      skillsDoc,
+    ]
   );
 
   const handleCommand = useCallback(

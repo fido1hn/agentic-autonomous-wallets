@@ -69,7 +69,7 @@ describe("routeIntent idempotency", () => {
     const intent = {
       agentId: agent.id,
       action: "transfer" as const,
-      amountLamports: "1000",
+      amountAtomic: "1000",
       idempotencyKey: "idem-001"
     };
 

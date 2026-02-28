@@ -12,7 +12,7 @@ const RuleMaxLamportsPerTxSchema = z.object({
 
 const RuleAllowedActionsSchema = z.object({
   kind: z.literal("allowed_actions"),
-  actions: z.array(z.enum(["swap", "transfer", "rebalance"])).min(1)
+  actions: z.array(z.enum(["swap", "transfer"])).min(1)
 });
 
 const RuleAllowedMintsSchema = z.object({

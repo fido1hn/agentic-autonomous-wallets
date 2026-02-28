@@ -1,6 +1,8 @@
+import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { PolicyRecord } from "../db/sqlite";
 import type { ExecutionIntent, PolicyDecision } from "../types/intents";
 import { ReasonCodes } from "./reasonCodes";
+import { classifySolanaFailure } from "./solanaFailure";
 
 function parseLamports(value: string): bigint | null {
   try {
@@ -20,8 +22,39 @@ function getDailyCap(): bigint {
   return parsed ?? 5000000000n;
 }
 
-// Placeholder simulation policy.
-// Current behavior uses runtime flags and simple payload marker checks.
+function resolveSolanaRpc(): string {
+  const rpc = process.env.SOLANA_RPC?.trim();
+  if (!rpc) {
+    throw new Error(ReasonCodes.policyRpcSimulationUnavailable);
+  }
+  return rpc;
+}
+
+function deserializeTransaction(serializedTx: string): Transaction | VersionedTransaction {
+  const bytes = Buffer.from(serializedTx, "base64");
+  try {
+    return VersionedTransaction.deserialize(bytes);
+  } catch {
+    return Transaction.from(bytes);
+  }
+}
+
+let simulateSerializedTransaction = async (serializedTx: string): Promise<void> => {
+  const connection = new Connection(resolveSolanaRpc(), "confirmed");
+  const transaction = deserializeTransaction(serializedTx);
+  const simulation =
+    transaction instanceof VersionedTransaction
+      ? await connection.simulateTransaction(transaction, {
+          replaceRecentBlockhash: true,
+          sigVerify: false
+        })
+      : await connection.simulateTransaction(transaction);
+  if (simulation.value.err) {
+    throw new Error(JSON.stringify(simulation.value.err));
+  }
+};
+
+// Real simulation gate over the built transaction payload.
 export async function evaluateSimulation(serializedTx: string): Promise<PolicyDecision> {
   const checks = ["rpc_simulation"];
   const requireSimulation = process.env.AEGIS_REQUIRE_RPC_SIMULATION !== "false";
@@ -30,16 +63,26 @@ export async function evaluateSimulation(serializedTx: string): Promise<PolicyDe
     return { allowed: true, checks };
   }
 
-  if (!process.env.SOLANA_RPC) {
+  if (!process.env.SOLANA_RPC?.trim()) {
     return { allowed: false, reasonCode: ReasonCodes.policyRpcSimulationUnavailable, checks };
   }
 
-  // Placeholder simulation gate until real signed/unsigned tx simulation wiring is added.
-  if (serializedTx.includes("\"simulateFail\":true")) {
-    return { allowed: false, reasonCode: ReasonCodes.policyRpcSimulationFailed, checks };
+  try {
+    await simulateSerializedTransaction(serializedTx);
+    return { allowed: true, checks };
+  } catch (error) {
+    const classified = classifySolanaFailure(
+      error,
+      ReasonCodes.policyRpcSimulationFailed,
+      "Transaction simulation failed on Solana."
+    );
+    return {
+      allowed: false,
+      reasonCode: classified.reasonCode,
+      reasonDetail: classified.reasonDetail,
+      checks
+    };
   }
-
-  return { allowed: true, checks };
 }
 
 // Baseline Aegis guardrails that always run, even when no custom policy is assigned.
@@ -58,7 +101,7 @@ export async function evaluateBaselineIntent(
     return { allowed: false, reasonCode: ReasonCodes.policyInvalidAgentId, checks };
   }
 
-  const lamports = parseLamports(intent.amountLamports);
+  const lamports = parseLamports(intent.amountAtomic);
   if (lamports === null || lamports === 0n) {
     return { allowed: false, reasonCode: ReasonCodes.policyInvalidAmount, checks };
   }
@@ -73,6 +116,27 @@ export async function evaluateBaselineIntent(
     checks.push("token_allowlist");
     if (!intent.fromMint || !intent.toMint) {
       return { allowed: false, reasonCode: ReasonCodes.policySwapMintRequired, checks };
+    }
+  }
+
+  if (intent.action === "transfer") {
+    checks.push("transfer_requirements");
+    if (!intent.recipientAddress) {
+      return { allowed: false, reasonCode: ReasonCodes.transferRecipientRequired, checks };
+    }
+    if (!intent.transferAsset) {
+      return { allowed: false, reasonCode: ReasonCodes.transferAssetRequired, checks };
+    }
+    if (intent.walletAddress && intent.recipientAddress === intent.walletAddress) {
+      return {
+        allowed: false,
+        reasonCode: ReasonCodes.transferSelfNotAllowed,
+        reasonDetail: "Recipient address must be different from the agent wallet address.",
+        checks
+      };
+    }
+    if (intent.transferAsset === "spl" && !intent.mintAddress) {
+      return { allowed: false, reasonCode: ReasonCodes.transferMintRequired, checks };
     }
   }
 
@@ -99,7 +163,7 @@ export async function evaluateAssignedPolicies(
     return { allowed: true, checks };
   }
 
-  const lamports = parseLamports(intent.amountLamports);
+  const lamports = parseLamports(intent.amountAtomic);
   if (lamports === null || lamports === 0n) {
     return { allowed: false, reasonCode: ReasonCodes.policyInvalidAmount, checks };
   }
@@ -139,6 +203,11 @@ export async function evaluateAssignedPolicies(
               return { allowed: false, reasonCode: ReasonCodes.policyMintNotAllowed, checks };
             }
           }
+          if (intent.action === "transfer" && intent.transferAsset === "spl") {
+            if (!intent.mintAddress || !rule.mints.includes(intent.mintAddress)) {
+              return { allowed: false, reasonCode: ReasonCodes.policyMintNotAllowed, checks };
+            }
+          }
           break;
         }
         case "max_slippage_bps": {
@@ -161,4 +230,27 @@ export async function evaluateAssignedPolicies(
   }
 
   return { allowed: true, checks };
+}
+
+export function setSimulateSerializedTransactionForTests(
+  fn: ((serializedTx: string) => Promise<void>) | null
+): void {
+  if (!fn) {
+    simulateSerializedTransaction = async (serializedTx: string): Promise<void> => {
+      const connection = new Connection(resolveSolanaRpc(), "confirmed");
+      const transaction = deserializeTransaction(serializedTx);
+      const simulation =
+        transaction instanceof VersionedTransaction
+          ? await connection.simulateTransaction(transaction, {
+              replaceRecentBlockhash: true,
+              sigVerify: false
+            })
+          : await connection.simulateTransaction(transaction);
+      if (simulation.value.err) {
+        throw new Error(JSON.stringify(simulation.value.err));
+      }
+    };
+    return;
+  }
+  simulateSerializedTransaction = fn;
 }
