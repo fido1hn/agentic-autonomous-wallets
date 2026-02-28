@@ -104,17 +104,21 @@ bun install
 cp .env.example .env
 ```
 
-Important vars:
+Required runtime vars:
 
 ```bash
 SOLANA_RPC=https://api.devnet.solana.com
+AEGIS_DB_PATH=./data/aegis.db
 PRIVY_APP_ID=<privy-app-id>
 PRIVY_APP_SECRET=<privy-app-secret>
-PRIVY_WALLET_POLICY_IDS=<optional-comma-separated-policy-ids>
 LOG_LEVEL=info
+OPENAI_API_KEY=<only needed for the demo agent CLI>
+JUPITER_QUOTE_URL=https://lite-api.jup.ag/swap/v1/quote
+JUPITER_SWAP_URL=https://lite-api.jup.ag/swap/v1/swap
 ```
 
 App startup fails fast when `PRIVY_APP_ID` or `PRIVY_APP_SECRET` is missing.
+The interactive agent CLI additionally requires `OPENAI_API_KEY`.
 
 ### 3) Run
 
@@ -155,6 +159,7 @@ bun run scripts/agent-cli.tsx --name agent-gamma
 ```
 
 Then chat naturally in each terminal, e.g.:
+
 - `register yourself in aegis`
 - `create your wallet`
 - `show your session`
