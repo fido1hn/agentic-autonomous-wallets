@@ -6,7 +6,6 @@
   "private": true,
   "scripts": {
     "start": "bun run src/api/server.ts",
-    "demo:devnet": "bun run scripts/demo.ts",
     "demo:agent": "bun run scripts/agent-cli.tsx --name agent-alpha",
     "policy:check": "bun run scripts/policyCheck.ts",
     "db:generate": "bun drizzle-kit generate --config=drizzle.config.ts",

@@ -139,13 +139,7 @@ OpenAPI docs are available at:
 bun test
 ```
 
-### 5) Demo
-
-```bash
-bun run demo:devnet
-```
-
-### 5b) Interactive agent CLI demo
+### 5) Interactive agent CLI demo
 
 Run one process per terminal and give each a unique name:
 
