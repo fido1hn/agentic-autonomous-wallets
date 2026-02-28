@@ -107,6 +107,29 @@ export const dailySpendCountersTable = sqliteTable(
   ],
 );
 
+export const dailyActionSpendCountersTable = sqliteTable(
+  "daily_action_spend_counters",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agentsTable.id, { onDelete: "cascade" }),
+    dayKey: text("day_key").notNull(),
+    action: text("action", { enum: ["swap", "transfer"] }).notNull(),
+    spentLamports: text("spent_lamports").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("daily_action_spend_counters_agent_day_action_idx").on(
+      table.agentId,
+      table.dayKey,
+      table.action
+    ),
+  ],
+);
+
 export const intentIdempotencyRecordsTable = sqliteTable(
   "intent_idempotency_records",
   {

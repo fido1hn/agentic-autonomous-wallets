@@ -159,6 +159,172 @@ describe("evaluateAssignedPolicies", () => {
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_MINT_NOT_ALLOWED");
   });
+
+  it("rejects transfer when recipient is not in allowed list", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "native",
+        recipientAddress: "recipient-2",
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [{ kind: "allowed_recipients", addresses: ["recipient-1"] }]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_RECIPIENT_NOT_ALLOWED");
+    expect(result.match?.ruleKind).toBe("allowed_recipients");
+  });
+
+  it("rejects transfer when recipient is blocked", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "native",
+        recipientAddress: "blocked-recipient",
+        fromMint: undefined,
+        toMint: undefined
+      }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [{ kind: "blocked_recipients", addresses: ["blocked-recipient"] }]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_RECIPIENT_BLOCKED");
+    expect(result.match?.ruleKind).toBe("blocked_recipients");
+  });
+
+  it("rejects swap when pair is not allowlisted", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent(),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [
+              {
+                kind: "allowed_swap_pairs",
+                pairs: [
+                  {
+                    fromMint: "So11111111111111111111111111111111111111112",
+                    toMint: "DifferentMint111111111111111111111111111111111"
+                  }
+                ]
+              }
+            ]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_SWAP_PAIR_NOT_ALLOWED");
+    expect(result.match?.ruleKind).toBe("allowed_swap_pairs");
+  });
+
+  it("rejects swap when protocol is not allowlisted", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({ swapProtocol: "raydium" }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [{ kind: "allowed_swap_protocols", protocols: ["orca"] }]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_SWAP_PROTOCOL_NOT_ALLOWED");
+    expect(result.match?.ruleKind).toBe("allowed_swap_protocols");
+  });
+
+  it("rejects when action-scoped daily cap is exceeded", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({ action: "transfer", transferAsset: "native", recipientAddress: "recipient-1", fromMint: undefined, toMint: undefined, amountAtomic: "200" }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [{ kind: "max_lamports_per_day_by_action", action: "transfer", lteLamports: "500" }]
+          }
+        })
+      ],
+      {
+        currentDailySpentLamports: "0",
+        currentDailySpentByActionLamports: { transfer: "400" }
+      }
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_DSL_DAILY_ACTION_CAP_EXCEEDED");
+    expect(result.match?.ruleKind).toBe("max_lamports_per_day_by_action");
+  });
+
+  it("rejects when action-specific tx cap is exceeded", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({ amountAtomic: "2000" }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [{ kind: "max_lamports_per_tx_by_action", action: "swap", lteLamports: "1000" }]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_DSL_MAX_PER_ACTION_TX_EXCEEDED");
+    expect(result.match?.ruleKind).toBe("max_lamports_per_tx_by_action");
+  });
+
+  it("rejects when mint-specific tx cap is exceeded", async () => {
+    const result = await evaluateAssignedPolicies(
+      baseIntent({
+        action: "transfer",
+        transferAsset: "spl",
+        recipientAddress: "recipient-1",
+        mintAddress: "Mint111111111111111111111111111111111111111",
+        fromMint: undefined,
+        toMint: undefined,
+        amountAtomic: "2000"
+      }),
+      [
+        policyRecord({
+          dsl: {
+            version: "aegis.policy.v2",
+            rules: [
+              {
+                kind: "max_lamports_per_tx_by_mint",
+                mint: "Mint111111111111111111111111111111111111111",
+                lteLamports: "1000"
+              }
+            ]
+          }
+        })
+      ]
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasonCode).toBe("POLICY_DSL_MAX_PER_MINT_TX_EXCEEDED");
+    expect(result.match?.ruleKind).toBe("max_lamports_per_tx_by_mint");
+  });
 });
 
 describe("evaluateBaselineIntent", () => {

@@ -4,20 +4,20 @@ import type {
   WalletBindingRepository,
   WalletPolicyAssignmentRepository
 } from "../db/sqlite";
-import type { AegisPolicyDslV1 } from "../types/policy";
-import { parseAegisPolicyDslV1 } from "../types/policy";
+import type { AegisPolicyDsl } from "../types/policy";
+import { parseAegisPolicyDsl } from "../types/policy";
 
 export interface CreatePolicyParams {
   name: string;
   description?: string;
-  dsl: AegisPolicyDslV1;
+  dsl: AegisPolicyDsl;
 }
 
 export interface UpdatePolicyParams {
   name?: string;
   description?: string;
   status?: "active" | "disabled";
-  dsl?: AegisPolicyDslV1;
+  dsl?: AegisPolicyDsl;
 }
 
 export interface PolicySummary {
@@ -25,6 +25,13 @@ export interface PolicySummary {
   maxLamportsPerTx?: string;
   allowedMints?: string[];
   maxSlippageBps?: number;
+  allowedRecipients?: string[];
+  blockedRecipients?: string[];
+  allowedSwapPairs?: Array<{ fromMint: string; toMint: string }>;
+  allowedSwapProtocols?: Array<"auto" | "jupiter" | "raydium" | "orca">;
+  maxLamportsPerDayByAction?: Partial<Record<"swap" | "transfer", string>>;
+  maxLamportsPerTxByAction?: Partial<Record<"swap" | "transfer", string>>;
+  maxLamportsPerTxByMint?: Array<{ mint: string; lteLamports: string }>;
 }
 
 export class PolicyService {
@@ -35,7 +42,7 @@ export class PolicyService {
   ) {}
 
   async createPolicy(ownerAgentId: string, params: CreatePolicyParams): Promise<PolicyRecord> {
-    const dsl = parseAegisPolicyDslV1(params.dsl);
+    const dsl = parseAegisPolicyDsl(params.dsl);
     return this.policies.create({
       ownerAgentId,
       name: params.name,
@@ -74,7 +81,7 @@ export class PolicyService {
       throw new Error("POLICY_ARCHIVED");
     }
 
-    const dsl = params.dsl ? parseAegisPolicyDslV1(params.dsl) : undefined;
+    const dsl = params.dsl ? parseAegisPolicyDsl(params.dsl) : undefined;
     const updated = await this.policies.updateForOwner(policyId, ownerAgentId, {
       name: params.name,
       description: params.description,
@@ -164,6 +171,36 @@ export class PolicyService {
           break;
         case "max_slippage_bps":
           summary.maxSlippageBps = rule.lteBps;
+          break;
+        case "allowed_recipients":
+          summary.allowedRecipients = rule.addresses;
+          break;
+        case "blocked_recipients":
+          summary.blockedRecipients = rule.addresses;
+          break;
+        case "allowed_swap_pairs":
+          summary.allowedSwapPairs = rule.pairs;
+          break;
+        case "allowed_swap_protocols":
+          summary.allowedSwapProtocols = rule.protocols;
+          break;
+        case "max_lamports_per_day_by_action":
+          summary.maxLamportsPerDayByAction = {
+            ...summary.maxLamportsPerDayByAction,
+            [rule.action]: rule.lteLamports
+          };
+          break;
+        case "max_lamports_per_tx_by_action":
+          summary.maxLamportsPerTxByAction = {
+            ...summary.maxLamportsPerTxByAction,
+            [rule.action]: rule.lteLamports
+          };
+          break;
+        case "max_lamports_per_tx_by_mint":
+          summary.maxLamportsPerTxByMint = [
+            ...(summary.maxLamportsPerTxByMint ?? []),
+            { mint: rule.mint, lteLamports: rule.lteLamports }
+          ];
           break;
       }
     }

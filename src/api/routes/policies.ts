@@ -2,7 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { getActiveAppContext } from "../appContext";
 import { jsonError, parseLimit } from "../http";
 import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
-import { parseAegisPolicyDslV1 } from "../../types/policy";
+import { parseAegisPolicyDsl } from "../../types/policy";
 
 const authHeadersSchema = z.object({
   "x-agent-id": z.string(),
@@ -69,6 +69,25 @@ const policySummarySchema = z.object({
   maxLamportsPerTx: z.string().optional(),
   allowedMints: z.array(z.string()).optional(),
   maxSlippageBps: z.number().optional(),
+  allowedRecipients: z.array(z.string()).optional(),
+  blockedRecipients: z.array(z.string()).optional(),
+  allowedSwapPairs: z.array(z.object({ fromMint: z.string(), toMint: z.string() })).optional(),
+  allowedSwapProtocols: z.array(z.enum(["auto", "jupiter", "raydium", "orca"])).optional(),
+  maxLamportsPerDayByAction: z
+    .object({
+      swap: z.string().optional(),
+      transfer: z.string().optional(),
+    })
+    .partial()
+    .optional(),
+  maxLamportsPerTxByAction: z
+    .object({
+      swap: z.string().optional(),
+      transfer: z.string().optional(),
+    })
+    .partial()
+    .optional(),
+  maxLamportsPerTxByMint: z.array(z.object({ mint: z.string(), lteLamports: z.string() })).optional(),
 });
 
 const errorSchema = z.object({
@@ -130,7 +149,7 @@ policiesRoutes.openapi(createPolicyRoute, (async (c: any) => {
 
   let dsl;
   try {
-    dsl = parseAegisPolicyDslV1(body.dsl);
+    dsl = parseAegisPolicyDsl(body.dsl);
   } catch {
     return jsonError(c, 400, "POLICY_DSL_INVALID", "dsl is invalid");
   }
@@ -283,7 +302,7 @@ policiesRoutes.openapi(updatePolicyRoute, (async (c: any) => {
   let dsl = undefined;
   if (body.dsl !== undefined) {
     try {
-      dsl = parseAegisPolicyDslV1(body.dsl);
+        dsl = parseAegisPolicyDsl(body.dsl);
     } catch {
       return jsonError(c, 400, "POLICY_DSL_INVALID", "dsl is invalid");
     }

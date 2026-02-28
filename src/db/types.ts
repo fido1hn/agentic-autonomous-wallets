@@ -4,9 +4,10 @@ export type ExecutionStatus = "approved" | "rejected";
 export type AgentApiKeyStatus = "active" | "revoked";
 export type PolicyStatus = "active" | "disabled" | "archived";
 
-import type { AegisPolicyDslV1 } from "../types/policy";
+import type { AegisPolicyDsl } from "../types/policy";
 import type {
   agentApiKeysTable,
+  dailyActionSpendCountersTable,
   dailySpendCountersTable,
   agentsTable,
   executionLogsTable,
@@ -23,6 +24,7 @@ type AgentApiKeyRow = typeof agentApiKeysTable.$inferSelect;
 type PolicyRow = typeof policiesTable.$inferSelect;
 type WalletPolicyAssignmentRow = typeof walletPolicyAssignmentsTable.$inferSelect;
 type DailySpendCounterRow = typeof dailySpendCountersTable.$inferSelect;
+type DailyActionSpendCounterRow = typeof dailyActionSpendCountersTable.$inferSelect;
 type IntentIdempotencyRecordRow = typeof intentIdempotencyRecordsTable.$inferSelect;
 
 export type AgentRecord = Omit<AgentRow, "status"> & { status: AgentStatus };
@@ -33,11 +35,12 @@ export type WalletBindingRecord = Omit<WalletBindingRow, "provider" | "walletAdd
 export type AgentApiKeyRecord = Omit<AgentApiKeyRow, "status"> & { status: AgentApiKeyStatus };
 export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson" | "ownerAgentId"> & {
   status: PolicyStatus;
-  dsl: AegisPolicyDslV1;
+  dsl: AegisPolicyDsl;
   ownerAgentId?: string;
 };
 export type WalletPolicyAssignmentRecord = WalletPolicyAssignmentRow;
 export type DailySpendCounterRecord = DailySpendCounterRow;
+export type DailyActionSpendCounterRecord = DailyActionSpendCounterRow;
 export type IntentIdempotencyRecord = IntentIdempotencyRecordRow;
 
 export interface ExecutionLogRecord extends Omit<ExecutionLogRow, "status" | "provider" | "policyChecksJson"> {
@@ -78,14 +81,14 @@ export interface CreatePolicyInput {
   name: string;
   description?: string;
   status?: PolicyStatus;
-  dsl: AegisPolicyDslV1;
+  dsl: AegisPolicyDsl;
 }
 
 export interface UpdatePolicyInput {
   name?: string;
   description?: string;
   status?: Exclude<PolicyStatus, "archived">;
-  dsl?: AegisPolicyDslV1;
+  dsl?: AegisPolicyDsl;
 }
 
 export interface AgentRepository {
@@ -144,6 +147,20 @@ export interface DailySpendCounterRepository {
   addSpend(agentId: string, dayKey: string, amountLamports: string): Promise<DailySpendCounterRecord>;
 }
 
+export interface DailyActionSpendCounterRepository {
+  getByAgentDayAndAction(
+    agentId: string,
+    dayKey: string,
+    action: "swap" | "transfer"
+  ): Promise<DailyActionSpendCounterRecord | null>;
+  addSpend(
+    agentId: string,
+    dayKey: string,
+    action: "swap" | "transfer",
+    amountLamports: string
+  ): Promise<DailyActionSpendCounterRecord>;
+}
+
 export interface IntentIdempotencyRepository {
   find(agentId: string, idempotencyKey: string): Promise<IntentIdempotencyRecord | null>;
   save(agentId: string, idempotencyKey: string, resultJson: string): Promise<IntentIdempotencyRecord>;
@@ -157,5 +174,6 @@ export interface Repositories {
   policies: PolicyRepository;
   walletPolicyAssignments: WalletPolicyAssignmentRepository;
   dailySpendCounters: DailySpendCounterRepository;
+  dailyActionSpendCounters: DailyActionSpendCounterRepository;
   intentIdempotency: IntentIdempotencyRepository;
 }

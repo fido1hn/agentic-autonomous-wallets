@@ -13,6 +13,11 @@ function parseLamports(value: string): bigint | null {
   }
 }
 
+export interface PolicyUsageContext {
+  currentDailySpentLamports: string;
+  currentDailySpentByActionLamports?: Partial<Record<"swap" | "transfer", string>>;
+}
+
 export function nowDayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -157,7 +162,8 @@ export async function evaluateBaselineIntent(
 // If no policies are assigned, this check passes by design.
 export async function evaluateAssignedPolicies(
   intent: ExecutionIntent,
-  policies: PolicyRecord[]
+  policies: PolicyRecord[],
+  usageContext?: PolicyUsageContext
 ): Promise<PolicyDecision> {
   const checks: string[] = ["assigned_policies"];
 
@@ -170,6 +176,9 @@ export async function evaluateAssignedPolicies(
   if (lamports === null || lamports === 0n) {
     return { allowed: false, reasonCode: ReasonCodes.policyInvalidAmount, checks };
   }
+  const dailySpentByAction =
+    parseLamports(usageContext?.currentDailySpentByActionLamports?.[intent.action] ?? "0") ?? 0n;
+  const effectiveSwapProtocol = intent.swapProtocol ?? "auto";
 
   for (const policy of policies) {
     // Non-active policies stay attached but are skipped during evaluation.
@@ -280,6 +289,147 @@ export async function evaluateAssignedPolicies(
                   policyName: policy.name,
                   ruleKind: "max_slippage_bps",
                   ruleConfig: { lteBps: rule.lteBps }
+                }
+              };
+            }
+          }
+          break;
+        }
+        case "allowed_recipients": {
+          checks.push(`rule:allowed_recipients:${policy.id}`);
+          if (intent.action === "transfer") {
+            if (!intent.recipientAddress || !rule.addresses.includes(intent.recipientAddress)) {
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyRecipientNotAllowed,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "allowed_recipients",
+                  ruleConfig: { addresses: rule.addresses }
+                }
+              };
+            }
+          }
+          break;
+        }
+        case "blocked_recipients": {
+          checks.push(`rule:blocked_recipients:${policy.id}`);
+          if (intent.action === "transfer" && intent.recipientAddress && rule.addresses.includes(intent.recipientAddress)) {
+            return {
+              allowed: false,
+              reasonCode: ReasonCodes.policyRecipientBlocked,
+              checks,
+              match: {
+                policyId: policy.id,
+                policyName: policy.name,
+                ruleKind: "blocked_recipients",
+                ruleConfig: { addresses: rule.addresses }
+              }
+            };
+          }
+          break;
+        }
+        case "allowed_swap_pairs": {
+          checks.push(`rule:allowed_swap_pairs:${policy.id}`);
+          if (intent.action === "swap") {
+            const allowed = rule.pairs.some(
+              (pair) => pair.fromMint === intent.fromMint && pair.toMint === intent.toMint
+            );
+            if (!allowed) {
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policySwapPairNotAllowed,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "allowed_swap_pairs",
+                  ruleConfig: { pairs: rule.pairs }
+                }
+              };
+            }
+          }
+          break;
+        }
+        case "allowed_swap_protocols": {
+          checks.push(`rule:allowed_swap_protocols:${policy.id}`);
+          if (intent.action === "swap" && !rule.protocols.includes(effectiveSwapProtocol)) {
+            return {
+              allowed: false,
+              reasonCode: ReasonCodes.policySwapProtocolNotAllowed,
+              checks,
+              match: {
+                policyId: policy.id,
+                policyName: policy.name,
+                ruleKind: "allowed_swap_protocols",
+                ruleConfig: { protocols: rule.protocols }
+              }
+            };
+          }
+          break;
+        }
+        case "max_lamports_per_day_by_action": {
+          checks.push(`rule:max_lamports_per_day_by_action:${policy.id}`);
+          if (intent.action === rule.action) {
+            const max = parseLamports(rule.lteLamports);
+            if (max === null || dailySpentByAction + lamports > max) {
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyDslDailyActionCapExceeded,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "max_lamports_per_day_by_action",
+                  ruleConfig: { action: rule.action, lteLamports: rule.lteLamports }
+                }
+              };
+            }
+          }
+          break;
+        }
+        case "max_lamports_per_tx_by_action": {
+          checks.push(`rule:max_lamports_per_tx_by_action:${policy.id}`);
+          if (intent.action === rule.action) {
+            const max = parseLamports(rule.lteLamports);
+            if (max === null || lamports > max) {
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyDslMaxPerActionTxExceeded,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "max_lamports_per_tx_by_action",
+                  ruleConfig: { action: rule.action, lteLamports: rule.lteLamports }
+                }
+              };
+            }
+          }
+          break;
+        }
+        case "max_lamports_per_tx_by_mint": {
+          checks.push(`rule:max_lamports_per_tx_by_mint:${policy.id}`);
+          let applies = false;
+          if (intent.action === "swap") {
+            applies = intent.fromMint === rule.mint || intent.toMint === rule.mint;
+          } else if (intent.action === "transfer" && intent.transferAsset === "spl") {
+            applies = intent.mintAddress === rule.mint;
+          }
+          if (applies) {
+            const max = parseLamports(rule.lteLamports);
+            if (max === null || lamports > max) {
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyDslMaxPerMintTxExceeded,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "max_lamports_per_tx_by_mint",
+                  ruleConfig: { mint: rule.mint, lteLamports: rule.lteLamports }
                 }
               };
             }

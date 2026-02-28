@@ -173,4 +173,36 @@ describe("PolicyService", () => {
       })
     ).rejects.toThrow("POLICY_ARCHIVED");
   });
+
+  it("creates and summarizes v2 policies", async () => {
+    const { agentService, policyService } = createServices();
+    const owner = await agentService.createAgent({ name: "owner-v2" });
+
+    const policy = await policyService.createPolicy(owner.id, {
+      name: "Orca-only swap policy",
+      dsl: {
+        version: "aegis.policy.v2",
+        rules: [
+          { kind: "allowed_actions", actions: ["swap"] },
+          { kind: "allowed_swap_protocols", protocols: ["orca"] },
+          {
+            kind: "allowed_swap_pairs",
+            pairs: [
+              {
+                fromMint: "So11111111111111111111111111111111111111112",
+                toMint: "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+              }
+            ]
+          },
+          { kind: "max_lamports_per_day_by_action", action: "swap", lteLamports: "500000000" }
+        ]
+      }
+    });
+
+    const summary = policyService.summarizePolicy(policy);
+    expect(policy.dsl.version).toBe("aegis.policy.v2");
+    expect(summary.allowedSwapProtocols).toEqual(["orca"]);
+    expect(summary.allowedSwapPairs?.[0]?.toMint).toBe("BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k");
+    expect(summary.maxLamportsPerDayByAction?.swap).toBe("500000000");
+  });
 });

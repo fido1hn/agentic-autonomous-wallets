@@ -43,6 +43,13 @@
       "when": 1772313600000,
       "tag": "0005_owner_policy_library",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1772317200000,
+      "tag": "0006_daily_action_spend_counters",
+      "breakpoints": true
     }
   ]
 }

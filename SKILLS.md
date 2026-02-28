@@ -218,7 +218,7 @@ Returns recent approved/rejected executions.
 
 ### 10) `create_policy`
 
-Creates an Aegis policy in DSL v1 format.
+Creates an Aegis policy in DSL v1 or v2 format.
 
 - Method: `POST /policies`
 - Auth: required
@@ -229,14 +229,24 @@ Creates an Aegis policy in DSL v1 format.
   "name": "allow small swaps",
   "description": "limit to small swap amounts",
   "dsl": {
-    "version": "1",
+    "version": "aegis.policy.v1",
     "rules": [
       { "kind": "allowed_actions", "actions": ["swap"] },
-      { "kind": "max_lamports_per_tx", "value": "50000000" }
+      { "kind": "max_lamports_per_tx", "lteLamports": "50000000" }
     ]
   }
 }
 ```
+
+Common v2 rule kinds:
+
+- `allowed_recipients`
+- `blocked_recipients`
+- `allowed_swap_pairs`
+- `allowed_swap_protocols`
+- `max_lamports_per_day_by_action`
+- `max_lamports_per_tx_by_action`
+- `max_lamports_per_tx_by_mint`
 
 ### 11) `list_policies`
 
@@ -400,7 +410,12 @@ Current policy controls:
 
 - Per-tx value caps
 - Daily spend caps
-- Allowlist/denylist for recipients and programs
+- Allowlist/denylist for recipients
+- Swap backend allowlists
+- Swap pair allowlists
+- Action-scoped daily caps
+- Action-scoped tx caps
+- Mint-scoped tx caps
 
 Policy ownership and lifecycle:
 
@@ -409,6 +424,13 @@ Policy ownership and lifecycle:
 - disabled policies may remain assigned but are skipped during runtime evaluation
 - Token mint restrictions
 - Fail-closed default
+
+Example v2 policy prompts:
+
+- `Create a policy that only allows transfers to 6KuXVqRPuhdrD69P1ZzCm4mbRoz5rNFJPY82wNkW2xd9`
+- `Create a policy that only allows SOL to USDC swaps using Orca`
+- `Create a policy that caps daily transfer spend at 0.5 SOL`
+- `Create a policy that blocks transfers to BadRecipient1111111111111111111111111111111111`
 
 ## Reference docs
 

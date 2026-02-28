@@ -44,7 +44,19 @@ const intentRejectedSchema = z.object({
   policyMatch: z.object({
     policyId: z.string(),
     policyName: z.string().optional(),
-    ruleKind: z.enum(["allowed_actions", "max_lamports_per_tx", "allowed_mints", "max_slippage_bps"]),
+    ruleKind: z.enum([
+      "allowed_actions",
+      "max_lamports_per_tx",
+      "allowed_mints",
+      "max_slippage_bps",
+      "allowed_recipients",
+      "blocked_recipients",
+      "allowed_swap_pairs",
+      "allowed_swap_protocols",
+      "max_lamports_per_day_by_action",
+      "max_lamports_per_tx_by_action",
+      "max_lamports_per_tx_by_mint"
+    ]),
     ruleConfig: z.record(z.string(), z.unknown()),
   }).optional(),
 });

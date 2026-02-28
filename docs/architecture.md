@@ -79,6 +79,22 @@ Current DSL v1 rule set:
 - `allowed_mints`
 - `max_slippage_bps`
 
+Current DSL compatibility model:
+
+- `aegis.policy.v1` remains supported unchanged
+- `aegis.policy.v2` extends the same flat `rules[]` model
+- no nested AND/OR policy groups in this build
+
+Current DSL v2 additions:
+
+- `allowed_recipients`
+- `blocked_recipients`
+- `allowed_swap_pairs`
+- `allowed_swap_protocols`
+- `max_lamports_per_day_by_action`
+- `max_lamports_per_tx_by_action`
+- `max_lamports_per_tx_by_mint`
+
 ### 3.4 Protocol Adapter
 
 - Converts intent to protocol tx format
@@ -98,6 +114,7 @@ SQLite stores:
 - Agent-owned policy library
 - Policy assignment priority per wallet
 - Daily spend counters
+- Daily spend counters by action
 - Idempotency execution records
 - Intent and tx outcomes
 - Rejection reasons

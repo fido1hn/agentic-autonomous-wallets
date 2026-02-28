@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import * as schema from "./schema";
 import { createAgentsRepository } from "./repositories/agentsRepository";
 import { createAgentApiKeysRepository } from "./repositories/agentApiKeysRepository";
+import { createDailyActionSpendCountersRepository } from "./repositories/dailyActionSpendCountersRepository";
 import { createDailySpendCountersRepository } from "./repositories/dailySpendCountersRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
 import { createIntentIdempotencyRepository } from "./repositories/intentIdempotencyRepository";
@@ -25,6 +26,8 @@ export type {
   CreateAgentInput,
   CreateExecutionLogInput,
   DailySpendCounterRecord,
+  DailyActionSpendCounterRecord,
+  DailyActionSpendCounterRepository,
   DailySpendCounterRepository,
   ExecutionLogRecord,
   ExecutionLogRepository,
@@ -106,6 +109,7 @@ export function createRepositories(db: BunSQLiteDatabase<typeof schema>): Reposi
     policies: createPoliciesRepository(db),
     walletPolicyAssignments: createWalletPolicyAssignmentsRepository(db),
     dailySpendCounters: createDailySpendCountersRepository(db),
+    dailyActionSpendCounters: createDailyActionSpendCountersRepository(db),
     intentIdempotency: createIntentIdempotencyRepository(db)
   };
 }

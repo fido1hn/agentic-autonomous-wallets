@@ -77,7 +77,18 @@ export type ExecutionResultResponse =
       policyMatch?: {
         policyId: string;
         policyName?: string;
-        ruleKind: "allowed_actions" | "max_lamports_per_tx" | "allowed_mints" | "max_slippage_bps";
+        ruleKind:
+          | "allowed_actions"
+          | "max_lamports_per_tx"
+          | "allowed_mints"
+          | "max_slippage_bps"
+          | "allowed_recipients"
+          | "blocked_recipients"
+          | "allowed_swap_pairs"
+          | "allowed_swap_protocols"
+          | "max_lamports_per_day_by_action"
+          | "max_lamports_per_tx_by_action"
+          | "max_lamports_per_tx_by_mint";
         ruleConfig: Record<string, unknown>;
       };
     };
@@ -116,6 +127,13 @@ export interface PolicySummaryResponse {
   maxLamportsPerTx?: string;
   allowedMints?: string[];
   maxSlippageBps?: number;
+  allowedRecipients?: string[];
+  blockedRecipients?: string[];
+  allowedSwapPairs?: Array<{ fromMint: string; toMint: string }>;
+  allowedSwapProtocols?: Array<"auto" | "jupiter" | "raydium" | "orca">;
+  maxLamportsPerDayByAction?: Partial<Record<"swap" | "transfer", string>>;
+  maxLamportsPerTxByAction?: Partial<Record<"swap" | "transfer", string>>;
+  maxLamportsPerTxByMint?: Array<{ mint: string; lteLamports: string }>;
 }
 
 export interface PolicyDetailResponse extends PolicyRecordResponse {

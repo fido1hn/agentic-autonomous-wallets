@@ -167,7 +167,22 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
 
   // 1) Enforce wallet-assigned DSL policies (user-configured controls).
   const assignedPolicies = await policyService.listAgentWalletPolicies(resolvedIntent.agentId);
-  const assignedPolicyDecision = await evaluateAssignedPolicies(resolvedIntent, assignedPolicies);
+  const dayKey = nowDayKey();
+  const dailySpend = await db.repositories.dailySpendCounters.getByAgentAndDay(
+    resolvedIntent.agentId,
+    dayKey
+  );
+  const dailyActionSpend = await db.repositories.dailyActionSpendCounters.getByAgentDayAndAction(
+    resolvedIntent.agentId,
+    dayKey,
+    resolvedIntent.action
+  );
+  const assignedPolicyDecision = await evaluateAssignedPolicies(resolvedIntent, assignedPolicies, {
+    currentDailySpentLamports: dailySpend?.spentLamports ?? "0",
+    currentDailySpentByActionLamports: {
+      [resolvedIntent.action]: dailyActionSpend?.spentLamports ?? "0"
+    }
+  });
   if (!assignedPolicyDecision.allowed) {
     const rejected: ExecutionResult = {
       status: "rejected",
@@ -199,11 +214,6 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   }
 
   // 2) Enforce baseline Aegis protections (global safety defaults).
-  const dayKey = nowDayKey();
-  const dailySpend = await db.repositories.dailySpendCounters.getByAgentAndDay(
-    resolvedIntent.agentId,
-    dayKey
-  );
   const baselinePolicyDecision = await evaluateBaselineIntent(
     resolvedIntent,
     dailySpend?.spentLamports ?? "0"
@@ -385,6 +395,12 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   await db.repositories.dailySpendCounters.addSpend(
     resolvedIntent.agentId,
     dayKey,
+    resolvedIntent.amountAtomic
+  );
+  await db.repositories.dailyActionSpendCounters.addSpend(
+    resolvedIntent.agentId,
+    dayKey,
+    resolvedIntent.action,
     resolvedIntent.amountAtomic
   );
 

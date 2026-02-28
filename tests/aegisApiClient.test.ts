@@ -228,4 +228,35 @@ describe("AegisApiClient", () => {
     await client.unassignPolicy("agent-1", "api-key", "pol-1");
     await client.archivePolicy("agent-1", "api-key", "pol-1");
   });
+
+  it("passes v2 policy payloads through unchanged", async () => {
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { dsl: { version: string; rules: Array<Record<string, unknown>> } };
+      expect(body.dsl.version).toBe("aegis.policy.v2");
+      expect(body.dsl.rules[0]?.kind).toBe("allowed_recipients");
+      return new Response(
+        JSON.stringify({
+          id: "pol-v2",
+          ownerAgentId: "agent-1",
+          name: "Recipient guard",
+          description: null,
+          status: "active",
+          dsl: body.dsl,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        })
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new AegisApiClient("http://localhost:3000");
+    const created = await client.createPolicy("agent-1", "api-key", {
+      name: "Recipient guard",
+      dsl: {
+        version: "aegis.policy.v2",
+        rules: [{ kind: "allowed_recipients", addresses: ["recipient-1"] }]
+      }
+    });
+
+    expect(created.dsl.version).toBe("aegis.policy.v2");
+  });
 });

@@ -33,7 +33,14 @@ export interface PolicyMatchInfo {
     | "allowed_actions"
     | "max_lamports_per_tx"
     | "allowed_mints"
-    | "max_slippage_bps";
+    | "max_slippage_bps"
+    | "allowed_recipients"
+    | "blocked_recipients"
+    | "allowed_swap_pairs"
+    | "allowed_swap_protocols"
+    | "max_lamports_per_day_by_action"
+    | "max_lamports_per_tx_by_action"
+    | "max_lamports_per_tx_by_mint";
   ruleConfig: Record<string, unknown>;
 }
 

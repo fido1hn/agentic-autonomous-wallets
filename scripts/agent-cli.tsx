@@ -325,7 +325,7 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
       tool({
         name: "create_policy",
         description:
-          "Create a wallet policy. Pass dslJson as a JSON string matching aegis.policy.v1. Use an empty description string if not needed.",
+          "Create a wallet policy. Pass dslJson as a JSON string matching aegis.policy.v1 or aegis.policy.v2. Useful rule kinds include allowed_recipients, blocked_recipients, allowed_swap_protocols, allowed_swap_pairs, max_lamports_per_day_by_action, max_lamports_per_tx_by_action, and max_lamports_per_tx_by_mint. Use an empty description string if not needed.",
         parameters: z.object({
           name: z.string(),
           description: z.string(),
@@ -351,7 +351,7 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
       tool({
         name: "update_policy",
         description:
-          "Update a policy. Use status=unchanged to keep status. Use empty strings for name/description/dslJson when not changing them.",
+          "Update a policy. Use status=unchanged to keep status. Use empty strings for name/description/dslJson when not changing them. dslJson may be aegis.policy.v1 or aegis.policy.v2.",
         parameters: z.object({
           policyId: z.string(),
           name: z.string(),

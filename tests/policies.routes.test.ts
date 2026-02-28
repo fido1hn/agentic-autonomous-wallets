@@ -319,4 +319,71 @@ describe("policies routes", () => {
     const unassignedBody = (await unassignedRes.json()) as { count: number };
     expect(unassignedBody.count).toBe(1);
   });
+
+  it("creates v2 policies and returns v2 summary fields on assigned list", async () => {
+    const { app, agent, apiKey } = await setup();
+
+    const createRes = await app.request("http://localhost/policies", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-agent-id": agent.id,
+        "x-agent-api-key": apiKey
+      },
+      body: JSON.stringify({
+        name: "Orca-only transfer and swap policy",
+        dsl: {
+          version: "aegis.policy.v2",
+          rules: [
+            { kind: "allowed_actions", actions: ["swap", "transfer"] },
+            { kind: "allowed_recipients", addresses: ["recipient-1"] },
+            { kind: "allowed_swap_protocols", protocols: ["orca"] },
+            {
+              kind: "allowed_swap_pairs",
+              pairs: [
+                {
+                  fromMint: "So11111111111111111111111111111111111111112",
+                  toMint: "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+                }
+              ]
+            }
+          ]
+        }
+      })
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { id: string; dsl: { version: string } };
+    expect(created.dsl.version).toBe("aegis.policy.v2");
+
+    const assignRes = await app.request(`http://localhost/agents/${agent.id}/policies/${created.id}`, {
+      method: "POST",
+      headers: {
+        "x-agent-id": agent.id,
+        "x-agent-api-key": apiKey
+      }
+    });
+    expect(assignRes.status).toBe(200);
+
+    const listAssignedRes = await app.request(`http://localhost/agents/${agent.id}/policies`, {
+      headers: {
+        "x-agent-id": agent.id,
+        "x-agent-api-key": apiKey
+      }
+    });
+    const body = (await listAssignedRes.json()) as {
+      data: Array<{
+        summary: {
+          allowedRecipients?: string[];
+          allowedSwapProtocols?: string[];
+          allowedSwapPairs?: Array<{ toMint: string }>;
+        };
+      }>;
+    };
+
+    expect(body.data[0]?.summary.allowedRecipients).toEqual(["recipient-1"]);
+    expect(body.data[0]?.summary.allowedSwapProtocols).toEqual(["orca"]);
+    expect(body.data[0]?.summary.allowedSwapPairs?.[0]?.toMint).toBe(
+      "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+    );
+  });
 });

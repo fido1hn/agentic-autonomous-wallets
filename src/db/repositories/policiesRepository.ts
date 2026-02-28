@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import type { AegisPolicyDslV1 } from "../../types/policy";
-import { parseAegisPolicyDslV1 } from "../../types/policy";
+import type { AegisPolicyDsl } from "../../types/policy";
+import { parseAegisPolicyDsl } from "../../types/policy";
 import * as schema from "../schema";
 import { policiesTable, walletPolicyAssignmentsTable } from "../schema";
 import type {
@@ -13,7 +13,7 @@ import type {
 import { nowIso } from "../utils";
 
 function toPolicyRecord(row: typeof policiesTable.$inferSelect): PolicyRecord {
-  const dsl = parseAegisPolicyDslV1(JSON.parse(row.dslJson) as AegisPolicyDslV1);
+  const dsl = parseAegisPolicyDsl(JSON.parse(row.dslJson) as AegisPolicyDsl);
   return {
     id: row.id,
     ownerAgentId: row.ownerAgentId ?? undefined,

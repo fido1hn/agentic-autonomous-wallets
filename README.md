@@ -34,9 +34,11 @@ Aegis is the gate between agent decisions and wallet signatures.
 - Policy checks: assigned DSL rules + baseline limits + simulation
 - Explicit policy precedence via assignment priority
 - Agent-owned policy library with archive-only lifecycle
+- DSL v1 + v2 compatibility for policy definitions
 - Durable daily spend accounting (DB-backed)
 - Idempotent intent execution by `agentId + idempotencyKey`
 - Per-tx cap and daily cap controls
+- Recipient, protocol, swap-pair, and action-scoped policy controls
 - Structured audit logs for every intent
 
 ## MVP scope
@@ -229,7 +231,7 @@ Aegis checks rules (input, limits, allowlists, simulation)
 ↓
 If approved, Aegis asks Privy to sign
 ↓
-Privy signs and returns signed tx for broadcast
+Privy signs (and provider path broadcasts) -> Aegis returns tx execution result
 ↓
 Private key never touches agent logic or app code
 
@@ -292,6 +294,49 @@ That means:
 - `DELETE /policies/:policyId` archives the policy instead of removing it
 - archived policies cannot be edited or newly assigned
 - disabled policies may remain assigned but are skipped during evaluation
+
+### Policy DSL v2
+
+Aegis now supports both:
+
+- `aegis.policy.v1`
+- `aegis.policy.v2`
+
+v1 policies continue to work unchanged.
+
+v2 keeps the same flat `rules[]` model and adds stronger wallet controls:
+
+- `allowed_recipients`
+- `blocked_recipients`
+- `allowed_swap_pairs`
+- `allowed_swap_protocols`
+- `max_lamports_per_day_by_action`
+- `max_lamports_per_tx_by_action`
+- `max_lamports_per_tx_by_mint`
+
+Example v2 policy:
+
+```json
+{
+  "name": "Only Orca SOL -> USDC swaps",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      { "kind": "allowed_swap_protocols", "protocols": ["orca"] },
+      {
+        "kind": "allowed_swap_pairs",
+        "pairs": [
+          {
+            "fromMint": "So11111111111111111111111111111111111111112",
+            "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
 
 ### Policy demo flow
 
