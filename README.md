@@ -27,6 +27,18 @@ Agents cannot sign directly.
 
 Aegis is the gate between agent decisions and wallet signatures.
 
+## Why Aegis
+
+Wallet providers protect keys.
+
+Aegis protects execution.
+
+That is the distinction in this project:
+
+- Privy handles custody and signing infrastructure
+- Aegis decides what an agent is allowed to do before any signing request is sent
+- agents stay autonomous, but not unchecked
+
 ## Core features
 
 - Programmatic wallet creation per agent
@@ -390,6 +402,16 @@ The current runtime supports:
 7. Ask one agent to swap SOL to USDC through Orca on devnet
 8. Inspect execution logs for approved/rejected runs
 
+## What The Demo Proves
+
+- [x] an agent can register itself and receive API credentials
+- [x] an agent can provision its own wallet
+- [x] an agent can read native SOL and SPL balances
+- [x] an agent can transfer SOL and SPL tokens
+- [x] an agent can swap on Solana devnet
+- [x] an agent can create, assign, update, and archive wallet policies
+- [x] Aegis can reject actions before signing and explain the exact blocking policy rule
+
 ## Why Aegis is the core security layer
 
 Key management stays with Privy.
@@ -429,6 +451,17 @@ Current protections:
 - Privy handles primary key custody
 - Simulation gate before broadcast
 - Full approve/reject audit trail
+
+## Known Limits
+
+- This submission is explicitly devnet-first.
+- Privy is the only active custody/signing backend in v1.
+- Token symbol resolution is intentionally narrow for the demo:
+  - `SOL` is resolved automatically
+  - `USDC` is resolved automatically
+  - other tokens should be provided by mint address
+- Swap availability still depends on devnet liquidity and protocol support.
+- Policy DSL v2 is intentionally flat; nested boolean logic is not part of this submission.
 
 ## Project layout
 
