@@ -67,9 +67,10 @@ Execution flow in system terms (current runtime):
 ### 3.3 Policy Engine
 
 - Enforces assigned DSL policy rules per wallet
+- Enforces agent-owned policy library semantics
 - Enforces baseline global guardrails
 - Enforces simulation gate
-- Returns deterministic reason codes for rejects
+- Returns deterministic reason codes plus structured policy-match metadata for DSL rejects
 
 Current DSL v1 rule set:
 
@@ -94,7 +95,7 @@ Current adapters:
 SQLite stores:
 
 - Agent and wallet metadata
-- Policy references
+- Agent-owned policy library
 - Policy assignment priority per wallet
 - Daily spend counters
 - Idempotency execution records
@@ -120,6 +121,15 @@ A tx is signed only when all checks pass:
 
 Any failed check => reject with reason code.
 
+When a reject comes from an assigned DSL policy, the result also includes:
+
+- `policyId`
+- `policyName`
+- `ruleKind`
+- `ruleConfig`
+
+That lets an agent explain exactly which policy blocked the request.
+
 ### 5.3 Inner vs outer controls
 
 - Inner control (Aegis): intent + policy decisions before signing
@@ -140,7 +150,7 @@ This gives controlled autonomy with deterministic safety gates.
 Each agent has:
 
 - Isolated wallet context
-- Isolated policy profile
+- Isolated policy library and assignment profile
 - Independent strategy loop
 
 Shared infrastructure can scale later.
@@ -152,6 +162,7 @@ MVP includes:
 - Hono API runtime
 - Privy signing
 - Devnet execution
+- Agent-owned policy CRUD with archive-only lifecycle
 - Approved + rejected demo flows
 
 MVP excludes:

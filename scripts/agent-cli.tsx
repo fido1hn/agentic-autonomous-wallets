@@ -304,6 +304,131 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
     [addToolEvent, api, requireSession]
   );
 
+  const getWalletPoliciesTool = useMemo(
+    () =>
+      tool({
+        name: "get_wallet_policies",
+        description: "List the active and assigned policies for this wallet.",
+        parameters: z.object({}),
+        execute: async () => {
+          const state = requireSession();
+          const result = await api.getWalletPolicies(state.agentId!, state.apiKey!);
+          addToolEvent("get_wallet_policies", "ok", `count=${result.count}`);
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const createPolicyTool = useMemo(
+    () =>
+      tool({
+        name: "create_policy",
+        description:
+          "Create a wallet policy. Pass dslJson as a JSON string matching aegis.policy.v1. Use an empty description string if not needed.",
+        parameters: z.object({
+          name: z.string(),
+          description: z.string(),
+          dslJson: z.string(),
+        }),
+        execute: async ({ name, description, dslJson }) => {
+          const state = requireSession();
+          const dsl = JSON.parse(dslJson) as Record<string, unknown>;
+          const policy = await api.createPolicy(state.agentId!, state.apiKey!, {
+            name,
+            description: description.trim() === "" ? undefined : description,
+            dsl,
+          });
+          addToolEvent("create_policy", "ok", `policyId=${policy.id}`);
+          return policy;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const updatePolicyTool = useMemo(
+    () =>
+      tool({
+        name: "update_policy",
+        description:
+          "Update a policy. Use status=unchanged to keep status. Use empty strings for name/description/dslJson when not changing them.",
+        parameters: z.object({
+          policyId: z.string(),
+          name: z.string(),
+          description: z.string(),
+          status: z.enum(["unchanged", "active", "disabled"]),
+          dslJson: z.string(),
+        }),
+        execute: async ({ policyId, name, description, status, dslJson }) => {
+          const state = requireSession();
+          const update: Record<string, unknown> = {};
+          if (name.trim() !== "") update.name = name;
+          if (description.trim() !== "") update.description = description;
+          if (status !== "unchanged") update.status = status;
+          if (dslJson.trim() !== "") update.dsl = JSON.parse(dslJson) as Record<string, unknown>;
+          const policy = await api.updatePolicy(state.agentId!, state.apiKey!, policyId, update);
+          addToolEvent("update_policy", "ok", `policyId=${policy.id} status=${policy.status}`);
+          return policy;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const archivePolicyTool = useMemo(
+    () =>
+      tool({
+        name: "archive_policy",
+        description: "Archive a policy so it can no longer be edited or newly assigned.",
+        parameters: z.object({
+          policyId: z.string(),
+        }),
+        execute: async ({ policyId }) => {
+          const state = requireSession();
+          const result = await api.archivePolicy(state.agentId!, state.apiKey!, policyId);
+          addToolEvent("archive_policy", "ok", `policyId=${result.id}`);
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const assignPolicyTool = useMemo(
+    () =>
+      tool({
+        name: "assign_policy_to_wallet",
+        description: "Assign a policy to this wallet with an explicit priority.",
+        parameters: z.object({
+          policyId: z.string(),
+          priority: z.number().int().min(0).max(1000),
+        }),
+        execute: async ({ policyId, priority }) => {
+          const state = requireSession();
+          const result = await api.assignPolicy(state.agentId!, state.apiKey!, policyId, { priority });
+          addToolEvent("assign_policy_to_wallet", "ok", `policyId=${result.policyId} priority=${priority}`);
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
+  const removePolicyTool = useMemo(
+    () =>
+      tool({
+        name: "remove_policy_from_wallet",
+        description: "Unassign a policy from this wallet without deleting the policy.",
+        parameters: z.object({
+          policyId: z.string(),
+        }),
+        execute: async ({ policyId }) => {
+          const state = requireSession();
+          const result = await api.unassignPolicy(state.agentId!, state.apiKey!, policyId);
+          addToolEvent("remove_policy_from_wallet", "ok", `policyId=${result.policyId}`);
+          return result;
+        },
+      }),
+    [addToolEvent, api, requireSession]
+  );
+
   const agent = useMemo(
     () =>
       new Agent({
@@ -319,6 +444,12 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
           transferSolTool,
           transferSplTool,
           swapTokensTool,
+          getWalletPoliciesTool,
+          createPolicyTool,
+          updatePolicyTool,
+          archivePolicyTool,
+          assignPolicyTool,
+          removePolicyTool,
         ],
       }),
     [
@@ -332,6 +463,12 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
       transferSolTool,
       transferSplTool,
       swapTokensTool,
+      getWalletPoliciesTool,
+      createPolicyTool,
+      updatePolicyTool,
+      archivePolicyTool,
+      assignPolicyTool,
+      removePolicyTool,
       skillsDoc,
     ]
   );

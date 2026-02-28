@@ -185,7 +185,17 @@ export async function evaluateAssignedPolicies(
         case "allowed_actions": {
           checks.push(`rule:allowed_actions:${policy.id}`);
           if (!rule.actions.includes(intent.action)) {
-            return { allowed: false, reasonCode: ReasonCodes.policyActionNotAllowed, checks };
+            return {
+              allowed: false,
+              reasonCode: ReasonCodes.policyActionNotAllowed,
+              checks,
+              match: {
+                policyId: policy.id,
+                policyName: policy.name,
+                ruleKind: "allowed_actions",
+                ruleConfig: { actions: rule.actions }
+              }
+            };
           }
           break;
         }
@@ -193,7 +203,18 @@ export async function evaluateAssignedPolicies(
           checks.push(`rule:max_lamports_per_tx:${policy.id}`);
           const max = parseLamports(rule.lteLamports);
           if (max === null || lamports > max) {
-            return { allowed: false, reasonCode: ReasonCodes.policyDslMaxPerTxExceeded, checks };
+            return {
+              allowed: false,
+              reasonCode: ReasonCodes.policyDslMaxPerTxExceeded,
+              reasonDetail: "Requested amount exceeds configured policy max.",
+              checks,
+              match: {
+                policyId: policy.id,
+                policyName: policy.name,
+                ruleKind: "max_lamports_per_tx",
+                ruleConfig: { lteLamports: rule.lteLamports }
+              }
+            };
           }
           break;
         }
@@ -203,12 +224,32 @@ export async function evaluateAssignedPolicies(
             const fromAllowed = !!intent.fromMint && rule.mints.includes(intent.fromMint);
             const toAllowed = !!intent.toMint && rule.mints.includes(intent.toMint);
             if (!fromAllowed || !toAllowed) {
-              return { allowed: false, reasonCode: ReasonCodes.policyMintNotAllowed, checks };
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyMintNotAllowed,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "allowed_mints",
+                  ruleConfig: { mints: rule.mints }
+                }
+              };
             }
           }
           if (intent.action === "transfer" && intent.transferAsset === "spl") {
             if (!intent.mintAddress || !rule.mints.includes(intent.mintAddress)) {
-              return { allowed: false, reasonCode: ReasonCodes.policyMintNotAllowed, checks };
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyMintNotAllowed,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "allowed_mints",
+                  ruleConfig: { mints: rule.mints }
+                }
+              };
             }
           }
           break;
@@ -217,10 +258,30 @@ export async function evaluateAssignedPolicies(
           checks.push(`rule:max_slippage_bps:${policy.id}`);
           if (intent.action === "swap") {
             if (intent.maxSlippageBps === undefined) {
-              return { allowed: false, reasonCode: ReasonCodes.policySwapSlippageRequired, checks };
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policySwapSlippageRequired,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "max_slippage_bps",
+                  ruleConfig: { lteBps: rule.lteBps }
+                }
+              };
             }
             if (intent.maxSlippageBps > rule.lteBps) {
-              return { allowed: false, reasonCode: ReasonCodes.policyMaxSlippageExceeded, checks };
+              return {
+                allowed: false,
+                reasonCode: ReasonCodes.policyMaxSlippageExceeded,
+                checks,
+                match: {
+                  policyId: policy.id,
+                  policyName: policy.name,
+                  ruleKind: "max_slippage_bps",
+                  ruleConfig: { lteBps: rule.lteBps }
+                }
+              };
             }
           }
           break;

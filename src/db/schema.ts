@@ -53,6 +53,9 @@ export const policiesTable = sqliteTable("policies", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
+  ownerAgentId: text("owner_agent_id").references(() => agentsTable.id, {
+    onDelete: "cascade",
+  }),
   name: text("name").notNull(),
   description: text("description"),
   status: text("status", {

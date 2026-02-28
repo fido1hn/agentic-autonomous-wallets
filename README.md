@@ -33,6 +33,7 @@ Aegis is the gate between agent decisions and wallet signatures.
 - Privy-based signing path
 - Policy checks: assigned DSL rules + baseline limits + simulation
 - Explicit policy precedence via assignment priority
+- Agent-owned policy library with archive-only lifecycle
 - Durable daily spend accounting (DB-backed)
 - Idempotent intent execution by `agentId + idempotencyKey`
 - Per-tx cap and daily cap controls
@@ -167,7 +168,11 @@ bun run test:privy-live
 - `GET /agents/:agentId/balances`
 - `POST /policies`
 - `GET /policies`
+- `GET /policies/:policyId`
+- `PATCH /policies/:policyId`
+- `DELETE /policies/:policyId`
 - `POST /agents/:agentId/policies/:policyId`
+- `DELETE /agents/:agentId/policies/:policyId`
 - `GET /agents/:agentId/policies`
 - `POST /intents/execute`
 - `GET /agents/:agentId/executions?limit=50`
@@ -251,6 +256,53 @@ Typical rejected write responses now include a stable `reasonCode` plus optional
   "policyChecks": ["rpc_simulation"]
 }
 ```
+
+When a rejection comes from an assigned DSL policy, the result now also includes `policyMatch` so agents can explain exactly what blocked the action:
+
+```json
+{
+  "status": "rejected",
+  "reasonCode": "POLICY_DSL_MAX_PER_TX_EXCEEDED",
+  "reasonDetail": "Requested amount exceeds configured policy max.",
+  "policyChecks": [
+    "assigned_policies",
+    "policy:pol_123:active",
+    "rule:max_lamports_per_tx:pol_123"
+  ],
+  "policyMatch": {
+    "policyId": "pol_123",
+    "policyName": "Transfer cap",
+    "ruleKind": "max_lamports_per_tx",
+    "ruleConfig": {
+      "lteLamports": "100000000"
+    }
+  }
+}
+```
+
+### Policy lifecycle
+
+Policies are now owned by the creating agent.
+
+That means:
+
+- `GET /policies` is a personal policy library, not a global list
+- policies can exist unassigned
+- policies can be assigned or unassigned from the agent wallet
+- `DELETE /policies/:policyId` archives the policy instead of removing it
+- archived policies cannot be edited or newly assigned
+- disabled policies may remain assigned but are skipped during evaluation
+
+### Policy demo flow
+
+The current runtime supports:
+
+1. Create a policy
+2. Assign it to the wallet
+3. Trigger a rejection
+4. Inspect `policyMatch` to see the exact blocking rule
+5. Update the policy
+6. Retry the same action successfully
 
 ### Swap backend behavior
 

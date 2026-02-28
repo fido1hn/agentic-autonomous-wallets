@@ -34,11 +34,15 @@ Private keys are never returned to agents or app code.
 - `get_execution_history`
 - `create_policy`
 - `list_policies`
+- `get_policy`
+- `update_policy`
+- `archive_policy`
 - `assign_policy_to_wallet`
+- `remove_policy_from_wallet`
+- `get_wallet_policies`
 
 ### Planned next (design target)
 
-- `revoke_policy_from_wallet`
 - `rotate_agent_api_key`
 - `call_program`
 
@@ -236,12 +240,45 @@ Creates an Aegis policy in DSL v1 format.
 
 ### 11) `list_policies`
 
-Lists available policies.
+Lists caller-owned policies.
 
 - Method: `GET /policies?limit=50`
 - Auth: required
 
-### 12) `assign_policy_to_wallet`
+Supported filters:
+
+- `status=active|disabled|archived`
+- `assigned=true|false`
+- `limit=50`
+
+### 12) `get_policy`
+
+Returns one caller-owned policy, plus whether it is currently assigned to the caller wallet.
+
+- Method: `GET /policies/:policyId`
+- Auth: required
+
+### 13) `update_policy`
+
+Replaces fields on a caller-owned policy.
+
+- Method: `PATCH /policies/:policyId`
+- Auth: required
+- Notes:
+  - archived policies cannot be edited
+  - `dsl` replacement is full-replace, not patch-merge
+
+### 14) `archive_policy`
+
+Archives a caller-owned policy.
+
+- Method: `DELETE /policies/:policyId`
+- Auth: required
+- Notes:
+  - archive-only lifecycle
+  - archived policies cannot be newly assigned or edited
+
+### 15) `assign_policy_to_wallet`
 
 Assigns a policy to an agent wallet with optional priority.
 
@@ -254,6 +291,27 @@ Assigns a policy to an agent wallet with optional priority.
   "priority": 200
 }
 ```
+
+### 16) `remove_policy_from_wallet`
+
+Detaches a policy from the agent wallet without deleting it.
+
+- Method: `DELETE /agents/:agentId/policies/:policyId`
+- Auth: required
+- Notes:
+  - idempotent
+  - policy remains in the caller policy library
+
+### 17) `get_wallet_policies`
+
+Lists policies currently assigned to the wallet with effective order and summarized limits.
+
+- Method: `GET /agents/:agentId/policies`
+- Auth: required
+- Returned metadata includes:
+  - `effectiveOrder`
+  - assignment priority
+  - summarized limits such as `maxLamportsPerTx`
 
 ## Safety contract
 
@@ -298,26 +356,57 @@ Rejected intent results can also include:
 }
 ```
 
+Policy-driven rejects can include exact blocking rule details:
+
+```json
+{
+  "status": "rejected",
+  "reasonCode": "POLICY_DSL_MAX_PER_TX_EXCEEDED",
+  "reasonDetail": "Requested amount exceeds configured policy max.",
+  "policyChecks": [
+    "assigned_policies",
+    "policy:pol_123:active",
+    "rule:max_lamports_per_tx:pol_123"
+  ],
+  "policyMatch": {
+    "policyId": "pol_123",
+    "policyName": "Transfer cap",
+    "ruleKind": "max_lamports_per_tx",
+    "ruleConfig": {
+      "lteLamports": "100000000"
+    }
+  }
+}
+```
+
 For devnet swap requests, agents should explain protocol-specific failures clearly:
 
 - `JUPITER_MAINNET_ONLY`: Jupiter swap backend is only available on mainnet in this build
 - `SWAP_PROTOCOL_UNAVAILABLE`: no compatible swap backend is configured for the current environment
 - `INSUFFICIENT_FUNDS`: wallet does not have enough balance to complete the action
 
-## Policy direction (planned)
+## Policy direction
 
-Target behavior:
+Current behavior:
 
 - User chats with agent: "create a policy"
 - Agent calls Aegis policy endpoints
-- Aegis stores and enforces policy in Aegis runtime
+- Aegis stores policies in the caller-owned policy library
+- Policy can be assigned or unassigned from the wallet
 - Wallet actions follow Aegis policy checks before any signing request
+- If a policy blocks execution, Aegis returns the exact blocking rule in `policyMatch`
 
-Target policy controls:
+Current policy controls:
 
 - Per-tx value caps
 - Daily spend caps
 - Allowlist/denylist for recipients and programs
+
+Policy ownership and lifecycle:
+
+- policies are owned by the creating agent
+- archived policies remain visible for history but cannot be edited or newly assigned
+- disabled policies may remain assigned but are skipped during runtime evaluation
 - Token mint restrictions
 - Fail-closed default
 

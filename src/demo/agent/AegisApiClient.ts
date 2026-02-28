@@ -4,6 +4,11 @@ import type {
   CreateAgentResponse,
   ExecutionIntentRequest,
   ExecutionResultResponse,
+  PolicyAssignmentResponse,
+  PolicyDetailResponse,
+  PolicyListResponse,
+  PolicyRecordResponse,
+  PolicyUpdateRequest,
   SwapTokensInput,
   WalletBalancesResponse,
   WalletBindingResponse,
@@ -60,6 +65,98 @@ export class AegisApiClient {
       method: "POST",
       headers: this.authHeaders(agentId, apiKey),
       body: JSON.stringify(intent),
+    });
+  }
+
+  async createPolicy(
+    agentId: string,
+    apiKey: string,
+    input: { name: string; description?: string; dsl: Record<string, unknown> }
+  ): Promise<PolicyRecordResponse> {
+    return this.request<PolicyRecordResponse>("/policies", {
+      method: "POST",
+      headers: this.authHeaders(agentId, apiKey),
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getPolicies(
+    agentId: string,
+    apiKey: string,
+    options?: { status?: "active" | "disabled" | "archived"; assigned?: boolean; limit?: number }
+  ): Promise<PolicyListResponse> {
+    const query = new URLSearchParams();
+    if (options?.status) query.set("status", options.status);
+    if (options?.assigned !== undefined) query.set("assigned", String(options.assigned));
+    if (options?.limit !== undefined) query.set("limit", String(options.limit));
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return this.request<PolicyListResponse>(`/policies${suffix}`, {
+      method: "GET",
+      headers: this.authHeaders(agentId, apiKey),
+    });
+  }
+
+  async getPolicy(agentId: string, apiKey: string, policyId: string): Promise<PolicyDetailResponse> {
+    return this.request<PolicyDetailResponse>(`/policies/${policyId}`, {
+      method: "GET",
+      headers: this.authHeaders(agentId, apiKey),
+    });
+  }
+
+  async updatePolicy(
+    agentId: string,
+    apiKey: string,
+    policyId: string,
+    input: PolicyUpdateRequest
+  ): Promise<PolicyRecordResponse> {
+    return this.request<PolicyRecordResponse>(`/policies/${policyId}`, {
+      method: "PATCH",
+      headers: this.authHeaders(agentId, apiKey),
+      body: JSON.stringify(input),
+    });
+  }
+
+  async archivePolicy(agentId: string, apiKey: string, policyId: string): Promise<{ id: string; status: "archived" }> {
+    return this.request<{ id: string; status: "archived" }>(`/policies/${policyId}`, {
+      method: "DELETE",
+      headers: this.authHeaders(agentId, apiKey),
+    });
+  }
+
+  async assignPolicy(
+    agentId: string,
+    apiKey: string,
+    policyId: string,
+    input?: { priority?: number }
+  ): Promise<{ agentId: string; policyId: string; status: "assigned" }> {
+    return this.request<{ agentId: string; policyId: string; status: "assigned" }>(
+      `/agents/${agentId}/policies/${policyId}`,
+      {
+        method: "POST",
+        headers: this.authHeaders(agentId, apiKey),
+        body: JSON.stringify(input ?? {}),
+      }
+    );
+  }
+
+  async unassignPolicy(
+    agentId: string,
+    apiKey: string,
+    policyId: string
+  ): Promise<{ agentId: string; policyId: string; status: "unassigned" }> {
+    return this.request<{ agentId: string; policyId: string; status: "unassigned" }>(
+      `/agents/${agentId}/policies/${policyId}`,
+      {
+        method: "DELETE",
+        headers: this.authHeaders(agentId, apiKey),
+      }
+    );
+  }
+
+  async getWalletPolicies(agentId: string, apiKey: string): Promise<PolicyAssignmentResponse> {
+    return this.request<PolicyAssignmentResponse>(`/agents/${agentId}/policies`, {
+      method: "GET",
+      headers: this.authHeaders(agentId, apiKey),
     });
   }
 

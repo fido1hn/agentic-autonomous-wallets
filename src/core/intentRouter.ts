@@ -106,7 +106,11 @@ function parseExecutionResult(raw: string): ExecutionResult | null {
         status: "rejected",
         reasonCode: result.reasonCode,
         reasonDetail: typeof result.reasonDetail === "string" ? result.reasonDetail : undefined,
-        policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : []
+        policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : [],
+        policyMatch:
+          result.policyMatch && typeof result.policyMatch === "object"
+            ? result.policyMatch
+            : undefined
       } satisfies ExecutionResult;
     }
     return null;
@@ -169,7 +173,8 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
       status: "rejected",
       reasonCode: assignedPolicyDecision.reasonCode ?? ReasonCodes.policyRejected,
       reasonDetail: assignedPolicyDecision.reasonDetail,
-      policyChecks: assignedPolicyDecision.checks
+      policyChecks: assignedPolicyDecision.checks,
+      policyMatch: assignedPolicyDecision.match
     };
     writeAuditEvent({
       agentId: resolvedIntent.agentId,

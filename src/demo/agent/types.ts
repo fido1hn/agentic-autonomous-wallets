@@ -74,6 +74,12 @@ export type ExecutionResultResponse =
       reasonCode: string;
       reasonDetail?: string;
       policyChecks?: string[];
+      policyMatch?: {
+        policyId: string;
+        policyName?: string;
+        ruleKind: "allowed_actions" | "max_lamports_per_tx" | "allowed_mints" | "max_slippage_bps";
+        ruleConfig: Record<string, unknown>;
+      };
     };
 
 export interface AgentSession {
@@ -92,4 +98,58 @@ export interface AegisApiErrorPayload {
     message: string;
     requestId: string;
   };
+}
+
+export interface PolicyRecordResponse {
+  id: string;
+  ownerAgentId?: string;
+  name: string;
+  description?: string | null;
+  status: "active" | "disabled" | "archived";
+  dsl: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolicySummaryResponse {
+  allowedActions?: Array<"swap" | "transfer">;
+  maxLamportsPerTx?: string;
+  allowedMints?: string[];
+  maxSlippageBps?: number;
+}
+
+export interface PolicyDetailResponse extends PolicyRecordResponse {
+  assignment: {
+    assignedToAgentWallet: boolean;
+    priority?: number;
+  };
+}
+
+export interface PolicyAssignmentResponse {
+  agentId: string;
+  count: number;
+  data: Array<{
+    effectiveOrder: number;
+    assignment: {
+      id: string;
+      agentId: string;
+      policyId: string;
+      priority: number;
+      createdAt: string;
+    };
+    policy: PolicyRecordResponse;
+    summary: PolicySummaryResponse;
+  }>;
+}
+
+export interface PolicyListResponse {
+  count: number;
+  data: PolicyRecordResponse[];
+}
+
+export interface PolicyUpdateRequest {
+  name?: string;
+  description?: string;
+  status?: "active" | "disabled";
+  dsl?: Record<string, unknown>;
 }

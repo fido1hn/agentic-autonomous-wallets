@@ -57,14 +57,14 @@ describe("routeIntent idempotency", () => {
       provider: "privy"
     });
 
-    const restrictive = await policyService.createPolicy({
+    const restrictive = await policyService.createPolicy(agent.id, {
       name: "Swap only",
       dsl: {
         version: "aegis.policy.v1",
         rules: [{ kind: "allowed_actions", actions: ["swap"] }]
       }
     });
-    await policyService.assignPolicyToAgentWallet(agent.id, restrictive.id);
+    await policyService.assignPolicyToAgentWallet(agent.id, agent.id, restrictive.id);
 
     const intent = {
       agentId: agent.id,
@@ -77,6 +77,9 @@ describe("routeIntent idempotency", () => {
     const second = await routeIntent(intent);
 
     expect(first.status).toBe("rejected");
+    if (first.status === "rejected") {
+      expect(first.policyMatch?.ruleKind).toBe("allowed_actions");
+    }
     expect(second).toEqual(first);
 
     const logs = await db!.repositories.executionLogs.listByAgentId(agent.id);

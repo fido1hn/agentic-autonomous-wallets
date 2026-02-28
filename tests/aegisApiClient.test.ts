@@ -145,4 +145,87 @@ describe("AegisApiClient", () => {
       })
     ).rejects.toThrow("Only USDC is supported by symbol in this build");
   });
+
+  it("wraps policy lifecycle endpoints", async () => {
+    let call = 0;
+    globalThis.fetch = mock(async (input, init) => {
+      call += 1;
+      const url = String(input);
+      expect((init?.headers as Record<string, string>)["x-agent-id"]).toBe("agent-1");
+      if (call === 1) {
+        expect(url.endsWith("/policies")).toBe(true);
+        expect(init?.method).toBe("POST");
+        return new Response(JSON.stringify({
+          id: "pol-1",
+          ownerAgentId: "agent-1",
+          name: "Transfers",
+          description: null,
+          status: "active",
+          dsl: { version: "aegis.policy.v1", rules: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }));
+      }
+      if (call === 2) {
+        expect(url.includes("/policies?assigned=true")).toBe(true);
+        return new Response(JSON.stringify({ count: 1, data: [] }));
+      }
+      if (call === 3) {
+        expect(url.endsWith("/policies/pol-1")).toBe(true);
+        expect(init?.method).toBe("GET");
+        return new Response(JSON.stringify({
+          id: "pol-1",
+          ownerAgentId: "agent-1",
+          name: "Transfers",
+          description: null,
+          status: "active",
+          dsl: { version: "aegis.policy.v1", rules: [] },
+          assignment: { assignedToAgentWallet: false },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z"
+        }));
+      }
+      if (call === 4) {
+        expect(init?.method).toBe("PATCH");
+        return new Response(JSON.stringify({
+          id: "pol-1",
+          ownerAgentId: "agent-1",
+          name: "Transfers updated",
+          description: null,
+          status: "disabled",
+          dsl: { version: "aegis.policy.v1", rules: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T00:00:00.000Z"
+        }));
+      }
+      if (call === 5) {
+        expect(url.endsWith("/agents/agent-1/policies/pol-1")).toBe(true);
+        expect(init?.method).toBe("POST");
+        return new Response(JSON.stringify({ agentId: "agent-1", policyId: "pol-1", status: "assigned" }));
+      }
+      if (call === 6) {
+        expect(init?.method).toBe("GET");
+        return new Response(JSON.stringify({ agentId: "agent-1", count: 0, data: [] }));
+      }
+      if (call === 7) {
+        expect(init?.method).toBe("DELETE");
+        return new Response(JSON.stringify({ agentId: "agent-1", policyId: "pol-1", status: "unassigned" }));
+      }
+      expect(init?.method).toBe("DELETE");
+      return new Response(JSON.stringify({ id: "pol-1", status: "archived" }));
+    }) as unknown as typeof fetch;
+
+    const client = new AegisApiClient("http://localhost:3000");
+    await client.createPolicy("agent-1", "api-key", {
+      name: "Transfers",
+      dsl: { version: "aegis.policy.v1", rules: [] }
+    });
+    await client.getPolicies("agent-1", "api-key", { assigned: true });
+    await client.getPolicy("agent-1", "api-key", "pol-1");
+    await client.updatePolicy("agent-1", "api-key", "pol-1", { status: "disabled" });
+    await client.assignPolicy("agent-1", "api-key", "pol-1", { priority: 200 });
+    await client.getWalletPolicies("agent-1", "api-key");
+    await client.unassignPolicy("agent-1", "api-key", "pol-1");
+    await client.archivePolicy("agent-1", "api-key", "pol-1");
+  });
 });

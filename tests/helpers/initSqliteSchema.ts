@@ -68,8 +68,34 @@ export function initSqliteSchema(client: Database): void {
     CREATE UNIQUE INDEX intent_idempotency_records_agent_key_idx
       ON intent_idempotency_records(agent_id, idempotency_key);
 
+    CREATE TABLE policies (
+      id TEXT PRIMARY KEY NOT NULL,
+      owner_agent_id TEXT,
+      name TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL,
+      dsl_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (owner_agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE wallet_policy_assignments (
+      id TEXT PRIMARY KEY NOT NULL,
+      agent_id TEXT NOT NULL,
+      policy_id TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (policy_id) REFERENCES policies(id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX wallet_policy_assignments_agent_policy_idx
+      ON wallet_policy_assignments(agent_id, policy_id);
+
     CREATE INDEX idx_agents_status ON agents(status);
     CREATE INDEX idx_agent_api_keys_agent_status ON agent_api_keys(agent_id, status);
     CREATE INDEX idx_execution_logs_agent_created_at ON execution_logs(agent_id, created_at);
+    CREATE INDEX idx_policies_owner_status ON policies(owner_agent_id, status);
   `);
 }

@@ -23,6 +23,18 @@ export interface PolicyDecision {
   reasonCode?: string;
   reasonDetail?: string;
   checks: string[];
+  match?: PolicyMatchInfo;
+}
+
+export interface PolicyMatchInfo {
+  policyId: string;
+  policyName?: string;
+  ruleKind:
+    | "allowed_actions"
+    | "max_lamports_per_tx"
+    | "allowed_mints"
+    | "max_slippage_bps";
+  ruleConfig: Record<string, unknown>;
 }
 
 export interface SignatureResult {
@@ -44,6 +56,7 @@ export type ExecutionResult =
       reasonCode: string;
       reasonDetail?: string;
       policyChecks?: string[];
+      policyMatch?: PolicyMatchInfo;
     };
 
 export interface IntentValidationResult {

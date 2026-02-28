@@ -64,6 +64,28 @@ export function createWalletPolicyAssignmentsRepository(
       return toWalletPolicyAssignmentRecord(row);
     },
 
+    async find(agentId: string, policyId: string): Promise<WalletPolicyAssignmentRecord | null> {
+      const row = await db.query.walletPolicyAssignmentsTable.findFirst({
+        where: and(
+          eq(walletPolicyAssignmentsTable.agentId, agentId),
+          eq(walletPolicyAssignmentsTable.policyId, policyId)
+        )
+      });
+
+      return row ? toWalletPolicyAssignmentRecord(row) : null;
+    },
+
+    async unassign(agentId: string, policyId: string): Promise<void> {
+      await db
+        .delete(walletPolicyAssignmentsTable)
+        .where(
+          and(
+            eq(walletPolicyAssignmentsTable.agentId, agentId),
+            eq(walletPolicyAssignmentsTable.policyId, policyId)
+          )
+        );
+    },
+
     async listByAgentId(agentId: string): Promise<WalletPolicyAssignmentRecord[]> {
       const rows = await db.query.walletPolicyAssignmentsTable.findMany({
         where: eq(walletPolicyAssignmentsTable.agentId, agentId),

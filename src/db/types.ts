@@ -31,9 +31,10 @@ export type WalletBindingRecord = Omit<WalletBindingRow, "provider" | "walletAdd
   walletAddress?: string;
 };
 export type AgentApiKeyRecord = Omit<AgentApiKeyRow, "status"> & { status: AgentApiKeyStatus };
-export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson"> & {
+export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson" | "ownerAgentId"> & {
   status: PolicyStatus;
   dsl: AegisPolicyDslV1;
+  ownerAgentId?: string;
 };
 export type WalletPolicyAssignmentRecord = WalletPolicyAssignmentRow;
 export type DailySpendCounterRecord = DailySpendCounterRow;
@@ -73,10 +74,18 @@ export interface CreateAgentApiKeyInput {
 }
 
 export interface CreatePolicyInput {
+  ownerAgentId: string;
   name: string;
   description?: string;
   status?: PolicyStatus;
   dsl: AegisPolicyDslV1;
+}
+
+export interface UpdatePolicyInput {
+  name?: string;
+  description?: string;
+  status?: Exclude<PolicyStatus, "archived">;
+  dsl?: AegisPolicyDslV1;
 }
 
 export interface AgentRepository {
@@ -104,7 +113,19 @@ export interface AgentApiKeyRepository {
 export interface PolicyRepository {
   create(input: CreatePolicyInput): Promise<PolicyRecord>;
   findById(id: string): Promise<PolicyRecord | null>;
+  findByIdForOwner(id: string, ownerAgentId: string): Promise<PolicyRecord | null>;
   list(options?: { limit?: number }): Promise<PolicyRecord[]>;
+  listForOwner(
+    ownerAgentId: string,
+    options?: {
+      limit?: number;
+      status?: PolicyStatus;
+      assigned?: boolean;
+      assignedAgentId?: string;
+    }
+  ): Promise<PolicyRecord[]>;
+  updateForOwner(id: string, ownerAgentId: string, input: UpdatePolicyInput): Promise<PolicyRecord | null>;
+  archiveForOwner(id: string, ownerAgentId: string): Promise<PolicyRecord | null>;
 }
 
 export interface WalletPolicyAssignmentRepository {
@@ -113,6 +134,8 @@ export interface WalletPolicyAssignmentRepository {
     policyId: string,
     options?: { priority?: number }
   ): Promise<WalletPolicyAssignmentRecord>;
+  find(agentId: string, policyId: string): Promise<WalletPolicyAssignmentRecord | null>;
+  unassign(agentId: string, policyId: string): Promise<void>;
   listByAgentId(agentId: string): Promise<WalletPolicyAssignmentRecord[]>;
 }
 

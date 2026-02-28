@@ -41,6 +41,12 @@ const intentRejectedSchema = z.object({
   reasonCode: z.string(),
   reasonDetail: z.string().optional(),
   policyChecks: z.array(z.string()),
+  policyMatch: z.object({
+    policyId: z.string(),
+    policyName: z.string().optional(),
+    ruleKind: z.enum(["allowed_actions", "max_lamports_per_tx", "allowed_mints", "max_slippage_bps"]),
+    ruleConfig: z.record(z.string(), z.unknown()),
+  }).optional(),
 });
 
 const intentValidationErrorSchema = z.object({

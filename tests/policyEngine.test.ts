@@ -23,6 +23,7 @@ function baseIntent(overrides?: Partial<ExecutionIntent>): ExecutionIntent {
 function policyRecord(overrides?: Partial<PolicyRecord>): PolicyRecord {
   return {
     id: "ply_1",
+    ownerAgentId: "agent-1",
     name: "default",
     description: null,
     status: "active",
@@ -55,6 +56,8 @@ describe("evaluateAssignedPolicies", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_ACTION_NOT_ALLOWED");
+    expect(result.match?.ruleKind).toBe("allowed_actions");
+    expect(result.match?.ruleConfig).toEqual({ actions: ["swap"] });
   });
 
   it("rejects when max lamports per tx rule is exceeded", async () => {
@@ -69,6 +72,8 @@ describe("evaluateAssignedPolicies", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_DSL_MAX_PER_TX_EXCEEDED");
+    expect(result.match?.ruleKind).toBe("max_lamports_per_tx");
+    expect(result.match?.ruleConfig).toEqual({ lteLamports: "1000000" });
   });
 
   it("rejects swap when mint is not in allowlist", async () => {
@@ -88,6 +93,7 @@ describe("evaluateAssignedPolicies", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_MINT_NOT_ALLOWED");
+    expect(result.match?.ruleKind).toBe("allowed_mints");
   });
 
   it("rejects swap when max slippage rule exists and intent omits slippage", async () => {
@@ -102,6 +108,8 @@ describe("evaluateAssignedPolicies", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reasonCode).toBe("POLICY_SWAP_SLIPPAGE_REQUIRED");
+    expect(result.match?.ruleKind).toBe("max_slippage_bps");
+    expect(result.match?.ruleConfig).toEqual({ lteBps: 100 });
   });
 
   it("allows when all assigned policy rules pass", async () => {
