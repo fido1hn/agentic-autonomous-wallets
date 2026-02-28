@@ -1,4 +1,6 @@
+import { ReasonCodes } from "../core/reasonCodes";
 import type { ExecutionIntent, SerializedTransaction } from "../types/intents";
+import { resolveSolanaCluster } from "./solanaCluster";
 
 function mockSerializedSwap(intent: ExecutionIntent): string {
   return JSON.stringify({
@@ -16,6 +18,13 @@ function mockSerializedSwap(intent: ExecutionIntent): string {
 export async function buildJupiterSwap(intent: ExecutionIntent): Promise<SerializedTransaction> {
   if (!intent.walletAddress || !intent.fromMint || !intent.toMint) {
     throw new Error("JUPITER_BUILD_ERROR: missing walletAddress/fromMint/toMint");
+  }
+
+  const cluster = resolveSolanaCluster();
+  if (cluster !== "mainnet-beta") {
+    throw new Error(
+      `${ReasonCodes.jupiterMainnetOnly}: Jupiter swaps are only supported on mainnet in this Aegis build.`
+    );
   }
 
   const allowMock = process.env.AEGIS_ALLOW_MOCK_TX_BUILD !== "false";

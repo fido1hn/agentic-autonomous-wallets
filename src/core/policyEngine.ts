@@ -1,6 +1,6 @@
 import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import type { PolicyRecord } from "../db/sqlite";
-import type { ExecutionIntent, PolicyDecision } from "../types/intents";
+import type { ExecutionIntent, PolicyDecision, SerializedTransaction } from "../types/intents";
 import { ReasonCodes } from "./reasonCodes";
 import { classifySolanaFailure } from "./solanaFailure";
 
@@ -55,7 +55,7 @@ let simulateSerializedTransaction = async (serializedTx: string): Promise<void> 
 };
 
 // Real simulation gate over the built transaction payload.
-export async function evaluateSimulation(serializedTx: string): Promise<PolicyDecision> {
+export async function evaluateSimulation(serializedTx: SerializedTransaction): Promise<PolicyDecision> {
   const checks = ["rpc_simulation"];
   const requireSimulation = process.env.AEGIS_REQUIRE_RPC_SIMULATION !== "false";
 
@@ -68,7 +68,10 @@ export async function evaluateSimulation(serializedTx: string): Promise<PolicyDe
   }
 
   try {
-    await simulateSerializedTransaction(serializedTx);
+    const transactions = Array.isArray(serializedTx) ? serializedTx : [serializedTx];
+    for (const transaction of transactions) {
+      await simulateSerializedTransaction(transaction);
+    }
     return { allowed: true, checks };
   } catch (error) {
     const classified = classifySolanaFailure(

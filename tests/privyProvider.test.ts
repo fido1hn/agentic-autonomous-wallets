@@ -37,6 +37,41 @@ describe("privyProvider", () => {
     expect(result.txSignature).toBe("sig_test_001");
   });
 
+  it("signs and broadcasts multiple transactions sequentially", async () => {
+    process.env.SOLANA_RPC = "https://api.devnet.solana.com";
+    let calls = 0;
+
+    const fakeClient = {
+      wallets: () => ({
+        solana: () => ({
+          signTransaction: async () => {
+            calls += 1;
+            return {
+              signed_transaction: Buffer.from(`signed_tx_bytes_${calls}`).toString("base64")
+            };
+          }
+        })
+      })
+    } as any;
+    setPrivyClientForTests(fakeClient);
+
+    let broadcastCalls = 0;
+    setBroadcastSignedTransactionForTests(async () => {
+      broadcastCalls += 1;
+      return `sig_test_00${broadcastCalls}`;
+    });
+
+    const result = await privyProvider.signAndSend({
+      agentId: "agent-1",
+      walletRef: "wallet_123",
+      serializedTx: ["dGVzdDE=", "dGVzdDI="]
+    });
+
+    expect(result.txSignature).toBe("sig_test_002");
+    expect(result.txSignatures).toEqual(["sig_test_001", "sig_test_002"]);
+    expect(calls).toBe(2);
+  });
+
   it("maps broadcast insufficient funds errors to a stable reason code", async () => {
     process.env.SOLANA_RPC = "https://api.devnet.solana.com";
 

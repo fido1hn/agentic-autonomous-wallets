@@ -94,7 +94,8 @@ function statusColor(status: ToolLine["status"]): "green" | "red" | "yellow" {
 
 function renderExecutionResult(result: ExecutionResultResponse): string {
   if (result.status === "approved") {
-    return `approved txSignature=${result.txSignature}`;
+    const count = result.txSignatures?.length ?? 1;
+    return `approved txSignature=${result.txSignature}${count > 1 ? ` txCount=${count}` : ""}`;
   }
   return `rejected reasonCode=${result.reasonCode}${result.reasonDetail ? ` detail="${result.reasonDetail}"` : ""}`;
 }
@@ -278,17 +279,20 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
     () =>
       tool({
         name: "swap_tokens",
-        description: "Execute a Jupiter token swap from one mint to another for this wallet.",
+        description:
+          "Execute a token swap for this wallet. Use protocol=auto unless the user explicitly requests orca, raydium, or jupiter.",
         parameters: z.object({
-          fromMint: z.string(),
-          toMint: z.string(),
+          protocol: z.enum(["auto", "orca", "raydium", "jupiter"]),
+          fromToken: z.string(),
+          toToken: z.string(),
           amountLamports: z.string(),
         }),
-        execute: async ({ fromMint, toMint, amountLamports }) => {
+        execute: async ({ protocol, fromToken, toToken, amountLamports }) => {
           const state = requireSession();
           const result = await api.swapTokens(state.agentId!, state.apiKey!, {
-            fromMint,
-            toMint,
+            protocol,
+            fromToken,
+            toToken,
             amountLamports,
             maxSlippageBps: 100,
             idempotencyKey: createIdempotencyKey(),

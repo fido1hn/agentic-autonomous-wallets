@@ -1,12 +1,13 @@
 import type { WalletProviderName } from "../core/walletProvider";
 
-export type SerializedTransaction = string;
+export type SerializedTransaction = string | string[];
 
 export interface ExecutionIntent {
   agentId: string;
   action: "swap" | "transfer";
   walletAddress?: string;
   amountAtomic: string;
+  swapProtocol?: "auto" | "jupiter" | "raydium" | "orca";
   transferAsset?: "native" | "spl";
   recipientAddress?: string;
   mintAddress?: string;
@@ -26,6 +27,7 @@ export interface PolicyDecision {
 
 export interface SignatureResult {
   txSignature: string;
+  txSignatures?: string[];
   provider: WalletProviderName;
 }
 
@@ -34,6 +36,7 @@ export type ExecutionResult =
       status: "approved";
       provider: WalletProviderName;
       txSignature: string;
+      txSignatures?: string[];
       policyChecks: string[];
     }
   | {
@@ -69,6 +72,16 @@ function parseTransferAsset(value: unknown): ExecutionIntent["transferAsset"] | 
     return null;
   }
   if (value === "native" || value === "spl") {
+    return value;
+  }
+  return null;
+}
+
+function parseSwapProtocol(value: unknown): ExecutionIntent["swapProtocol"] | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (value === "auto" || value === "jupiter" || value === "raydium" || value === "orca") {
     return value;
   }
   return null;
@@ -117,6 +130,7 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
 
   const idempotencyKey = asString(payload.idempotencyKey) ?? undefined;
   const walletAddress = asString(payload.walletAddress) ?? undefined;
+  const swapProtocol = parseSwapProtocol(payload.swapProtocol) ?? undefined;
   const recipientAddress = asString(payload.recipientAddress) ?? undefined;
   const mintAddress = asString(payload.mintAddress) ?? undefined;
   const fromMint = asString(payload.fromMint) ?? undefined;
@@ -124,6 +138,9 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
   const transferAsset = parseTransferAsset(payload.transferAsset) ?? undefined;
   if (payload.transferAsset !== undefined && !transferAsset) {
     errors.push("TRANSFER_ASSET_INVALID");
+  }
+  if (payload.swapProtocol !== undefined && !swapProtocol) {
+    errors.push("SWAP_PROTOCOL_INVALID");
   }
 
   let maxSlippageBps: number | undefined;
@@ -172,6 +189,7 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
       agentId: agentId as string,
       action: action as ExecutionIntent["action"],
       amountAtomic: amountAtomic as string,
+      swapProtocol,
       transferAsset,
       recipientAddress,
       mintAddress,

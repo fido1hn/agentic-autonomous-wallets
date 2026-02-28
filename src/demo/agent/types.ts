@@ -43,6 +43,7 @@ export interface ExecutionIntentRequest {
   amountAtomic: string;
   idempotencyKey?: string;
   walletAddress?: string;
+  swapProtocol?: "auto" | "jupiter" | "raydium" | "orca";
   fromMint?: string;
   toMint?: string;
   maxSlippageBps?: number;
@@ -51,11 +52,21 @@ export interface ExecutionIntentRequest {
   mintAddress?: string;
 }
 
+export interface SwapTokensInput {
+  protocol?: "auto" | "jupiter" | "raydium" | "orca";
+  fromToken: string;
+  toToken: string;
+  amountLamports: string;
+  maxSlippageBps?: number;
+  idempotencyKey?: string;
+}
+
 export type ExecutionResultResponse =
   | {
       status: "approved";
       provider: "privy";
       txSignature: string;
+      txSignatures?: string[];
       policyChecks: string[];
     }
   | {

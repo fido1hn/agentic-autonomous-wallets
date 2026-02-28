@@ -31,28 +31,37 @@ export const privyProvider: WalletProvider = {
     }
 
     const privy = getPrivyClient();
-    const result = await privy.wallets().solana().signTransaction(params.walletRef, {
-      transaction: Buffer.from(params.serializedTx, "base64")
-    });
+    const transactions = Array.isArray(params.serializedTx) ? params.serializedTx : [params.serializedTx];
+    const signatures: string[] = [];
 
-    const signedTx = result.signed_transaction;
-    if (!signedTx) {
-      throw new Error("PRIVY_SIGN_ERROR: missing signed transaction");
+    for (const serializedTx of transactions) {
+      const result = await privy.wallets().solana().signTransaction(params.walletRef, {
+        transaction: Buffer.from(serializedTx, "base64")
+      });
+
+      const signedTx = result.signed_transaction;
+      if (!signedTx) {
+        throw new Error("PRIVY_SIGN_ERROR: missing signed transaction");
+      }
+
+      try {
+        const signature = await broadcastSignedTransaction(signedTx);
+        signatures.push(signature);
+      } catch (error) {
+        const classified = classifySolanaFailure(
+          error,
+          "SIGNING_FAILED",
+          "Provider signing or broadcast failed."
+        );
+        throw new Error(classified.reasonCode + (classified.reasonDetail ? `: ${classified.reasonDetail}` : ""));
+      }
     }
 
-    let txSignature: string;
-    try {
-      txSignature = await broadcastSignedTransaction(signedTx);
-    } catch (error) {
-      const classified = classifySolanaFailure(
-        error,
-        "SIGNING_FAILED",
-        "Provider signing or broadcast failed."
-      );
-      throw new Error(classified.reasonCode + (classified.reasonDetail ? `: ${classified.reasonDetail}` : ""));
-    }
-
-    return { txSignature, provider: "privy" };
+    return {
+      txSignature: signatures[signatures.length - 1] ?? "",
+      txSignatures: signatures,
+      provider: "privy"
+    };
   }
 };
 

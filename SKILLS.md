@@ -173,18 +173,37 @@ Semantic agent tool that wraps `POST /intents/execute`.
 
 Semantic agent tool that wraps `POST /intents/execute`.
 
+- In this build, Aegis resolves `USDC` automatically by environment:
+  - devnet with `auto`/`orca`: `BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k` (Orca devUSDC)
+  - devnet with `raydium`: `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+  - mainnet: `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+- For any other SPL token, provide the mint address explicitly.
+- Protocol behavior:
+  - `auto` chooses the best configured backend for the current environment
+  - `orca` is the preferred swap backend in this project
+  - `raydium` remains available explicitly on devnet
+  - `jupiter` is treated as mainnet-only and will be rejected on devnet with `JUPITER_MAINNET_ONLY`
+
 - Underlying body:
 
 ```json
 {
   "agentId": "30688291-4afd-413c-aa26-434721afea45",
   "action": "swap",
+  "swapProtocol": "auto",
   "fromMint": "So11111111111111111111111111111111111111112",
-  "toMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k",
   "amountAtomic": "1000000",
   "maxSlippageBps": 100
 }
 ```
+
+Example natural-language swap requests:
+
+- `swap 0.8 sol to usdc`
+- `swap 0.8 sol to usdc using orca`
+- `swap 0.8 sol to usdc using raydium`
+- `swap 0.8 sol to 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 
 ### 9) `get_execution_history`
 
@@ -278,6 +297,12 @@ Rejected intent results can also include:
   "policyChecks": ["rpc_simulation"]
 }
 ```
+
+For devnet swap requests, agents should explain protocol-specific failures clearly:
+
+- `JUPITER_MAINNET_ONLY`: Jupiter swap backend is only available on mainnet in this build
+- `SWAP_PROTOCOL_UNAVAILABLE`: no compatible swap backend is configured for the current environment
+- `INSUFFICIENT_FUNDS`: wallet does not have enough balance to complete the action
 
 ## Policy direction (planned)
 

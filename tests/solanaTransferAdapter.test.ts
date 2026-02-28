@@ -25,8 +25,9 @@ describe("solanaTransferAdapter", () => {
       recipientAddress: recipient,
       amountAtomic: "5000",
     });
+    expect(typeof serialized).toBe("string");
 
-    const transaction = Transaction.from(Buffer.from(serialized, "base64"));
+    const transaction = Transaction.from(Buffer.from(serialized as string, "base64"));
     expect(transaction.instructions.length).toBe(1);
     expect(transaction.feePayer?.toBase58()).toBe(owner);
   });
@@ -63,8 +64,9 @@ describe("solanaTransferAdapter", () => {
       mintAddress: mint,
       amountAtomic: "1000",
     });
+    expect(typeof serialized).toBe("string");
 
-    const transaction = Transaction.from(Buffer.from(serialized, "base64"));
+    const transaction = Transaction.from(Buffer.from(serialized as string, "base64"));
     expect(transaction.instructions.length).toBe(1);
   });
 
@@ -100,8 +102,9 @@ describe("solanaTransferAdapter", () => {
       mintAddress: mint,
       amountAtomic: "1000",
     });
+    expect(typeof serialized).toBe("string");
 
-    const transaction = Transaction.from(Buffer.from(serialized, "base64"));
+    const transaction = Transaction.from(Buffer.from(serialized as string, "base64"));
     expect(transaction.instructions.length).toBe(2);
   });
 

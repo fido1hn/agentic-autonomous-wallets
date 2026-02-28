@@ -3,9 +3,13 @@ import { AegisApiClient } from "../src/demo/agent/AegisApiClient";
 
 describe("AegisApiClient", () => {
   const originalFetch = globalThis.fetch;
+  const originalRpc = process.env.SOLANA_RPC;
+  const originalCluster = process.env.SOLANA_CLUSTER;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    process.env.SOLANA_RPC = originalRpc;
+    process.env.SOLANA_CLUSTER = originalCluster;
   });
 
   it("loads balances with auth headers", async () => {
@@ -54,7 +58,7 @@ describe("AegisApiClient", () => {
         expect(body.mintAddress).toBe("mint-1");
       } else {
         expect(body.action).toBe("swap");
-        expect(body.fromMint).toBe("from-mint");
+        expect(body.fromMint).toBe("So11111111111111111111111111111111111111112");
         expect(body.amountAtomic).toBe("7000");
       }
       return new Response(JSON.stringify({ status: "approved", provider: "privy", txSignature: `sig-${call}`, policyChecks: [] }));
@@ -66,12 +70,79 @@ describe("AegisApiClient", () => {
       mintAddress: "mint-1",
       amountAtomic: "10",
     });
+    process.env.SOLANA_RPC = "https://api.devnet.solana.com";
     const swap = await client.swapTokens("agent-1", "api-key", {
-      fromMint: "from-mint",
-      toMint: "to-mint",
+      fromToken: "SOL",
+      toToken: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       amountLamports: "7000",
     });
 
     expect(swap.status).toBe("approved");
+  });
+
+  it("normalizes SOL -> USDC on devnet", async () => {
+    process.env.SOLANA_RPC = "https://api.devnet.solana.com";
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, string>;
+      expect(body.fromMint).toBe("So11111111111111111111111111111111111111112");
+      expect(body.toMint).toBe("BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k");
+      return new Response(JSON.stringify({ status: "approved", provider: "privy", txSignature: "sig-devnet", policyChecks: [] }));
+    }) as unknown as typeof fetch;
+
+    const client = new AegisApiClient("http://localhost:3000");
+    const result = await client.swapTokens("agent-1", "api-key", {
+      fromToken: "SOL",
+      toToken: "USDC",
+      amountLamports: "1000",
+    });
+    expect(result.status).toBe("approved");
+  });
+
+  it("normalizes SOL -> USDC on devnet to Raydium mint when raydium is requested", async () => {
+    process.env.SOLANA_RPC = "https://api.devnet.solana.com";
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, string>;
+      expect(body.toMint).toBe("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+      expect(body.swapProtocol).toBe("raydium");
+      return new Response(JSON.stringify({ status: "approved", provider: "privy", txSignature: "sig-raydium", policyChecks: [] }));
+    }) as unknown as typeof fetch;
+
+    const client = new AegisApiClient("http://localhost:3000");
+    const result = await client.swapTokens("agent-1", "api-key", {
+      protocol: "raydium",
+      fromToken: "SOL",
+      toToken: "USDC",
+      amountLamports: "1000",
+    });
+    expect(result.status).toBe("approved");
+  });
+
+  it("normalizes SOL -> USDC on mainnet", async () => {
+    process.env.SOLANA_CLUSTER = "mainnet-beta";
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, string>;
+      expect(body.toMint).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+      return new Response(JSON.stringify({ status: "approved", provider: "privy", txSignature: "sig-mainnet", policyChecks: [] }));
+    }) as unknown as typeof fetch;
+
+    const client = new AegisApiClient("http://localhost:3000");
+    const result = await client.swapTokens("agent-1", "api-key", {
+      fromToken: "SOL",
+      toToken: "USDC",
+      amountLamports: "1000",
+    });
+    expect(result.status).toBe("approved");
+  });
+
+  it("rejects unsupported symbol-only output token", async () => {
+    const client = new AegisApiClient("http://localhost:3000");
+
+    await expect(
+      client.swapTokens("agent-1", "api-key", {
+        fromToken: "SOL",
+        toToken: "USDT",
+        amountLamports: "1000",
+      })
+    ).rejects.toThrow("Only USDC is supported by symbol in this build");
   });
 });

@@ -4,9 +4,11 @@ import type {
   CreateAgentResponse,
   ExecutionIntentRequest,
   ExecutionResultResponse,
+  SwapTokensInput,
   WalletBalancesResponse,
   WalletBindingResponse,
 } from "./types";
+import { requireResolvedToken } from "../../protocols/tokenResolver";
 
 export class AegisApiError extends Error {
   status: number;
@@ -104,19 +106,18 @@ export class AegisApiClient {
   async swapTokens(
     agentId: string,
     apiKey: string,
-    input: {
-      fromMint: string;
-      toMint: string;
-      amountLamports: string;
-      maxSlippageBps?: number;
-      idempotencyKey?: string;
-    }
+    input: SwapTokensInput
   ): Promise<ExecutionResultResponse> {
+    const protocol = input.protocol ?? "auto";
+    const fromToken = requireResolvedToken({ symbolOrMint: input.fromToken, protocol });
+    const toToken = requireResolvedToken({ symbolOrMint: input.toToken, protocol });
+
     return this.executeIntent(agentId, apiKey, {
       agentId,
       action: "swap",
-      fromMint: input.fromMint,
-      toMint: input.toMint,
+      swapProtocol: protocol,
+      fromMint: fromToken.mint,
+      toMint: toToken.mint,
       amountAtomic: input.amountLamports,
       maxSlippageBps: input.maxSlippageBps,
       idempotencyKey: input.idempotencyKey,

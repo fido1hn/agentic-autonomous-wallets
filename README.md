@@ -43,7 +43,9 @@ Aegis is the gate between agent decisions and wallet signatures.
 ### In scope
 
 - 3 agents running independently
-- Jupiter swap adapter on devnet
+- Orca swap adapter preferred on devnet
+- Raydium swap adapter available explicitly
+- Jupiter swap adapter available for mainnet-only paths
 - Privy signing integration
 - Policy gate in Aegis
 - Approved flow + rejected flow
@@ -59,6 +61,8 @@ Aegis is the gate between agent decisions and wallet signatures.
 - TypeScript + Bun
 - `@solana/web3.js`
 - `@solana/spl-token`
+- Orca Whirlpools
+- Raydium Trade API
 - Jupiter API
 - Privy Node SDK
 - SQLite
@@ -248,14 +252,30 @@ Typical rejected write responses now include a stable `reasonCode` plus optional
 }
 ```
 
+### Swap backend behavior
+
+- `swapProtocol: "auto"` selects the best backend for the current environment
+- `auto` now prefers `orca`
+- `raydium` remains available explicitly
+- `jupiter` remains available explicitly and is still mainnet-only in this build
+- explicit Jupiter requests on devnet are rejected with `JUPITER_MAINNET_ONLY`
+- token resolution for the demo is intentionally narrow:
+  - `SOL` resolves to wrapped SOL
+  - `USDC` resolves automatically by environment and selected swap protocol
+    - devnet `auto`/`orca` -> Orca devUSDC `BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k`
+    - devnet `raydium` -> standard devnet USDC `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
+    - mainnet -> `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
+  - any other output token must be provided as a mint address
+
 ### ExecutionIntent example
 
 ```json
 {
   "agentId": "agent-mm-01",
   "action": "swap",
+  "swapProtocol": "auto",
   "fromMint": "So11111111111111111111111111111111111111112",
-  "toMint": "<SPL_MINT>",
+  "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k",
   "amountAtomic": "50000000",
   "maxSlippageBps": 100,
   "idempotencyKey": "9c8d8ef0-9d6f-4d2f-bf1f-278380d2e0d7"
@@ -270,7 +290,7 @@ Typical rejected write responses now include a stable `reasonCode` plus optional
 4. Ask one agent for its balance
 5. Ask one agent to transfer SOL to another
 6. Ask one agent to transfer an SPL token
-7. Ask one agent to swap through Jupiter
+7. Ask one agent to swap SOL to USDC through Orca on devnet
 8. Inspect execution logs for approved/rejected runs
 
 ## Why Aegis is the core security layer

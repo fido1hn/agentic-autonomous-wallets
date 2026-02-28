@@ -1,8 +1,8 @@
 import type { ExecutionIntent, ExecutionResult, SignatureResult } from "../types/intents";
 import { getActiveAppContext } from "../api/appContext";
 import { writeAuditEvent } from "../observability/auditLog";
-import { buildJupiterSwap } from "../protocols/jupiterAdapter";
 import { buildSolTransfer, buildSplTransfer } from "../protocols/solanaTransferAdapter";
+import { buildSwapTransaction } from "../protocols/swapAdapter";
 import {
   evaluateAssignedPolicies,
   evaluateBaselineIntent,
@@ -19,6 +19,13 @@ function resolveReasonCode(error: unknown, fallback: string): string {
     const known = Object.values(ReasonCodes);
     if (known.includes(error.message as (typeof ReasonCodes)[keyof typeof ReasonCodes])) {
       return error.message;
+    }
+    const separator = error.message.indexOf(": ");
+    if (separator !== -1) {
+      const maybeCode = error.message.slice(0, separator);
+      if (known.includes(maybeCode as (typeof ReasonCodes)[keyof typeof ReasonCodes])) {
+        return maybeCode;
+      }
     }
   }
   return fallback;
@@ -37,9 +44,9 @@ function resolveReasonDetail(error: unknown): string | undefined {
 
 // Builds a serialized transaction payload from the normalized intent.
 // Transaction builders are action-specific and always return base64 serialized transactions.
-async function buildSerializedTransaction(intent: ExecutionIntent): Promise<string> {
+async function buildSerializedTransaction(intent: ExecutionIntent) {
   if (intent.action === "swap") {
-    return buildJupiterSwap(intent);
+    return buildSwapTransaction(intent);
   }
 
   if (intent.action === "transfer" && intent.transferAsset === "native") {
@@ -90,6 +97,7 @@ function parseExecutionResult(raw: string): ExecutionResult | null {
         status: "approved",
         provider: result.provider,
         txSignature: result.txSignature,
+        txSignatures: Array.isArray(result.txSignatures) ? result.txSignatures : undefined,
         policyChecks: Array.isArray(result.policyChecks) ? result.policyChecks : []
       } satisfies ExecutionResult;
     }
@@ -225,7 +233,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
   }
 
   // 3) Build the transaction only after policy checks pass.
-  let serializedTx = "";
+  let serializedTx: string | string[] = "";
   try {
     serializedTx = await buildSerializedTransaction(resolvedIntent);
   } catch (error) {
@@ -379,6 +387,7 @@ export async function routeIntent(intent: ExecutionIntent): Promise<ExecutionRes
     status: "approved",
     provider: signature.provider,
     txSignature: signature.txSignature,
+    txSignatures: signature.txSignatures,
     policyChecks: [
       ...assignedPolicyDecision.checks,
       ...baselinePolicyDecision.checks,

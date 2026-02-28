@@ -18,7 +18,7 @@ Aegis has 4 layers:
 1. API Runtime (Hono on Bun)
 2. Wallet Engine (provider routing)
 3. Policy Engine (risk checks)
-4. Protocol Adapters (Jupiter now)
+4. Protocol Adapters (Orca, Raydium, Jupiter)
 
 Submission flow:
 
@@ -83,7 +83,11 @@ Current DSL v1 rule set:
 - Converts intent to protocol tx format
 - Keeps protocol logic out of core runtime
 
-Current adapter: Jupiter (devnet)
+Current adapters:
+
+- Orca (preferred for `auto`)
+- Raydium (available explicitly)
+- Jupiter (mainnet-only in this build)
 
 ## 4. Data model
 
