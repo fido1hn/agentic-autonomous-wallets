@@ -6,7 +6,7 @@ describe("wallet provisioning", () => {
   it("creates privy wallet refs through Privy wallet API", async () => {
     const fakeClient = {
       wallets: () => ({
-        create: async () => ({ id: "wallet_test_001" })
+        create: async () => ({ id: "wallet_test_001", address: "So1anaPubKey11111111111111111111111111111111" })
       })
     } as any;
 
@@ -15,6 +15,7 @@ describe("wallet provisioning", () => {
       const result = await createWalletRefForAgent("agt_001");
       expect(result.provider).toBe("privy");
       expect(result.walletRef).toBe("wallet_test_001");
+      expect(result.walletAddress).toBe("So1anaPubKey11111111111111111111111111111111");
     } finally {
       setPrivyClientForTests(null);
     }

@@ -53,6 +53,7 @@ describe("routeIntent idempotency", () => {
     await db!.repositories.walletBindings.upsert({
       agentId: agent.id,
       walletRef: "wallet_idem_1",
+      walletAddress: "solana_address_idem_1",
       provider: "privy"
     });
 

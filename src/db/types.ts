@@ -26,7 +26,10 @@ type DailySpendCounterRow = typeof dailySpendCountersTable.$inferSelect;
 type IntentIdempotencyRecordRow = typeof intentIdempotencyRecordsTable.$inferSelect;
 
 export type AgentRecord = Omit<AgentRow, "status"> & { status: AgentStatus };
-export type WalletBindingRecord = Omit<WalletBindingRow, "provider"> & { provider: ProviderName };
+export type WalletBindingRecord = Omit<WalletBindingRow, "provider" | "walletAddress"> & {
+  provider: ProviderName;
+  walletAddress?: string;
+};
 export type AgentApiKeyRecord = Omit<AgentApiKeyRow, "status"> & { status: AgentApiKeyStatus };
 export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson"> & {
   status: PolicyStatus;
@@ -50,6 +53,7 @@ export interface CreateAgentInput {
 export interface UpsertWalletBindingInput {
   agentId: string;
   walletRef: string;
+  walletAddress?: string;
   provider: ProviderName;
 }
 

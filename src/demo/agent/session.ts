@@ -17,6 +17,7 @@ export function createAgentSession(name: string) {
 
     setWallet(wallet: WalletBindingResponse): AgentSession {
       state.walletRef = wallet.walletRef;
+      state.walletAddress = wallet.walletAddress;
       state.provider = wallet.provider;
       state.walletUpdatedAt = wallet.updatedAt;
       return { ...state };
@@ -26,6 +27,7 @@ export function createAgentSession(name: string) {
       state.agentId = undefined;
       state.apiKey = undefined;
       state.walletRef = undefined;
+      state.walletAddress = undefined;
       state.provider = undefined;
       state.walletUpdatedAt = undefined;
       return { ...state };

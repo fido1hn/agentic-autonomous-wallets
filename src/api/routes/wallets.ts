@@ -15,6 +15,7 @@ const agentPathSchema = z.object({
 const walletResponseSchema = z.object({
   agentId: z.string(),
   walletRef: z.string(),
+  walletAddress: z.string().optional(),
   provider: z.literal("privy"),
   updatedAt: z.string(),
 });

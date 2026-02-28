@@ -13,6 +13,7 @@ export interface CreateAgentResponse {
 export interface WalletBindingResponse {
   agentId: string;
   walletRef: string;
+  walletAddress?: string;
   provider: "privy";
   updatedAt: string;
 }
@@ -22,6 +23,7 @@ export interface AgentSession {
   agentId?: string;
   apiKey?: string;
   walletRef?: string;
+  walletAddress?: string;
   provider?: "privy";
   walletUpdatedAt?: string;
 }
@@ -33,4 +35,3 @@ export interface AegisApiErrorPayload {
     requestId: string;
   };
 }
-

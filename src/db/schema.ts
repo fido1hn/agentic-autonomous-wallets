@@ -15,6 +15,7 @@ export const walletBindingsTable = sqliteTable("wallet_bindings", {
     .primaryKey()
     .references(() => agentsTable.id, { onDelete: "cascade" }),
   walletRef: text("wallet_ref").notNull(),
+  walletAddress: text("wallet_address"),
   provider: text("provider", { enum: ["privy"] }).notNull(),
   updatedAt: text("updated_at").notNull(),
 });

@@ -14,6 +14,7 @@ export function initSqliteSchema(client: Database): void {
     CREATE TABLE wallet_bindings (
       agent_id TEXT PRIMARY KEY NOT NULL,
       wallet_ref TEXT NOT NULL,
+      wallet_address TEXT,
       provider TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE

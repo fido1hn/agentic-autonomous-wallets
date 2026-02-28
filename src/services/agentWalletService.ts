@@ -4,11 +4,12 @@ import type {
   WalletBindingRecord,
   WalletBindingRepository,
 } from "../db/sqlite";
-import { createWalletRefForAgent } from "../wallet/walletProvisioning";
+import { createWalletRefForAgent, getWalletMetadataByRef } from "../wallet/walletProvisioning";
 
 export interface CreateWalletBindingResult {
   agentId: string;
   walletRef: string;
+  walletAddress?: string;
   provider: ProviderName;
 }
 
@@ -21,7 +22,15 @@ export class AgentWalletService {
     ) => Promise<{
       provider: ProviderName;
       walletRef: string;
+      walletAddress?: string;
     }> = createWalletRefForAgent,
+    private readonly loadWalletMetadata: (
+      walletRef: string
+    ) => Promise<{
+      provider: ProviderName;
+      walletRef: string;
+      walletAddress?: string;
+    }> = getWalletMetadataByRef,
   ) {}
 
   async createAgentWallet(agentId: string): Promise<CreateWalletBindingResult> {
@@ -32,14 +41,25 @@ export class AgentWalletService {
 
     const existing = await this.walletBindings.findByAgentId(agentId);
     if (existing) {
-      return existing;
+      if (existing.walletAddress) {
+        return existing;
+      }
+
+      const hydrated = await this.loadWalletMetadata(existing.walletRef);
+      return this.walletBindings.upsert({
+        agentId,
+        walletRef: existing.walletRef,
+        walletAddress: hydrated.walletAddress,
+        provider: existing.provider,
+      });
     }
 
-    const { provider, walletRef } = await this.provisionWalletRef(agentId);
+    const { provider, walletRef, walletAddress } = await this.provisionWalletRef(agentId);
 
     return this.walletBindings.upsert({
       agentId,
       walletRef,
+      walletAddress,
       provider,
     });
   }
@@ -49,6 +69,17 @@ export class AgentWalletService {
     if (!binding) {
       throw new Error("AGENT_WALLET_NOT_FOUND");
     }
-    return binding;
+
+    if (binding.walletAddress) {
+      return binding;
+    }
+
+    const hydrated = await this.loadWalletMetadata(binding.walletRef);
+    return this.walletBindings.upsert({
+      agentId,
+      walletRef: binding.walletRef,
+      walletAddress: hydrated.walletAddress,
+      provider: binding.provider,
+    });
   }
 }

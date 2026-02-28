@@ -14,6 +14,7 @@ describe("sqlite persistence", () => {
 
     let agentId = "";
     let walletRef = "";
+    let walletAddress = "";
 
     const first = connectSqlite(dbPath);
     try {
@@ -23,7 +24,11 @@ describe("sqlite persistence", () => {
       const walletService = new AgentWalletService(
         first.repositories.agents,
         first.repositories.walletBindings,
-        async (agentId) => ({ provider: "privy", walletRef: `privy_wallet_${agentId}` })
+        async (agentId) => ({
+          provider: "privy",
+          walletRef: `privy_wallet_${agentId}`,
+          walletAddress: `solana_address_${agentId}`
+        })
       );
 
       const agent = await agentService.createAgent({ name: "agent-persist-01" });
@@ -31,6 +36,7 @@ describe("sqlite persistence", () => {
 
       agentId = agent.id;
       walletRef = binding.walletRef;
+      walletAddress = binding.walletAddress ?? "";
     } finally {
       first.client.close();
     }
@@ -43,6 +49,7 @@ describe("sqlite persistence", () => {
       expect(loadedAgent?.id).toBe(agentId);
       expect(loadedAgent?.name).toBe("agent-persist-01");
       expect(loadedBinding?.walletRef).toBe(walletRef);
+      expect(loadedBinding?.walletAddress).toBe(walletAddress);
       expect(loadedBinding?.provider).toBe("privy");
     } finally {
       second.client.close();

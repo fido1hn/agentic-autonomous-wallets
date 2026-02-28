@@ -15,7 +15,11 @@ describe("AgentWalletService", () => {
       const walletService = new AgentWalletService(
         repos.agents,
         repos.walletBindings,
-        async (agentId) => ({ provider: "privy", walletRef: `privy_wallet_${agentId}` })
+        async (agentId) => ({
+          provider: "privy",
+          walletRef: `privy_wallet_${agentId}`,
+          walletAddress: `solana_address_${agentId}`
+        })
       );
 
       const agent = await agentService.createAgent({ name: "agent-mm-01" });
@@ -24,6 +28,7 @@ describe("AgentWalletService", () => {
       expect(binding.agentId).toBe(agent.id);
       expect(binding.provider).toBe("privy");
       expect(binding.walletRef.startsWith("privy_wallet_")).toBe(true);
+      expect(binding.walletAddress).toBe(`solana_address_${agent.id}`);
     } finally {
       ctx.client.close();
     }
@@ -39,7 +44,11 @@ describe("AgentWalletService", () => {
       const walletService = new AgentWalletService(
         repos.agents,
         repos.walletBindings,
-        async (agentId) => ({ provider: "privy", walletRef: `privy_wallet_${agentId}` })
+        async (agentId) => ({
+          provider: "privy",
+          walletRef: `privy_wallet_${agentId}`,
+          walletAddress: `solana_address_${agentId}`
+        })
       );
 
       const first = await walletService.createAgentWallet(agent.id);
@@ -49,6 +58,42 @@ describe("AgentWalletService", () => {
 
       const loaded = await repos.walletBindings.findByAgentId(agent.id);
       expect(loaded?.walletRef).toBe(first.walletRef);
+      expect(loaded?.walletAddress).toBe(first.walletAddress);
+    } finally {
+      ctx.client.close();
+    }
+  });
+
+  it("hydrates missing wallet address for an existing binding", async () => {
+    const ctx = connectSqlite(":memory:");
+    initSqliteSchema(ctx.client);
+
+    try {
+      const repos = createRepositories(ctx.db);
+      const agent = await repos.agents.create({ name: "agent-mm-legacy", status: "active" });
+      await repos.walletBindings.upsert({
+        agentId: agent.id,
+        walletRef: "privy_wallet_legacy",
+        provider: "privy"
+      });
+
+      const walletService = new AgentWalletService(
+        repos.agents,
+        repos.walletBindings,
+        async (agentId) => ({
+          provider: "privy",
+          walletRef: `privy_wallet_${agentId}`,
+          walletAddress: `solana_address_${agentId}`
+        }),
+        async (walletRef) => ({
+          provider: "privy",
+          walletRef,
+          walletAddress: "solana_address_legacy"
+        })
+      );
+
+      const hydrated = await walletService.getAgentWallet(agent.id);
+      expect(hydrated.walletAddress).toBe("solana_address_legacy");
     } finally {
       ctx.client.close();
     }

@@ -10,6 +10,7 @@ function toWalletBindingRecord(row: typeof walletBindingsTable.$inferSelect): Wa
   return {
     agentId: row.agentId,
     walletRef: row.walletRef,
+    walletAddress: row.walletAddress ?? undefined,
     provider: row.provider,
     updatedAt: row.updatedAt
   };
@@ -27,6 +28,7 @@ export function createWalletBindingsRepository(
         .values({
           agentId: input.agentId,
           walletRef: input.walletRef,
+          walletAddress: input.walletAddress,
           provider: input.provider,
           updatedAt
         })
@@ -34,6 +36,7 @@ export function createWalletBindingsRepository(
           target: walletBindingsTable.agentId,
           set: {
             walletRef: input.walletRef,
+            walletAddress: input.walletAddress,
             provider: input.provider,
             updatedAt
           }

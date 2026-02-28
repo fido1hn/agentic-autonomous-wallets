@@ -315,6 +315,7 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
           </Text>
           <Text>agentId: {sessionState.agentId ?? "-"}</Text>
           <Text>walletRef: {sessionState.walletRef ?? "-"}</Text>
+          <Text>address: {sessionState.walletAddress ?? "-"}</Text>
           <Text>provider: {sessionState.provider ?? "-"}</Text>
           <Text>busy: {busy ? "yes" : "no"}</Text>
           <Text>apiKey: {sessionState.apiKey ? "set" : "-"}</Text>
@@ -360,4 +361,3 @@ main().catch((error) => {
   console.error(renderApiError(error));
   process.exit(1);
 });
-

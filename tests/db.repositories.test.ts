@@ -42,6 +42,7 @@ describe("db repositories", () => {
       const binding = await repos.walletBindings.upsert({
         agentId: agent.id,
         walletRef: "wallet_agent-mm-01",
+        walletAddress: "solana_address_agent-mm-01",
         provider: "privy"
       });
 
@@ -49,6 +50,7 @@ describe("db repositories", () => {
 
       expect(loaded).toEqual(binding);
       expect(loaded?.provider).toBe("privy");
+      expect(loaded?.walletAddress).toBe("solana_address_agent-mm-01");
     } finally {
       ctx.client.close();
     }
