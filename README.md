@@ -12,13 +12,6 @@ It lets agents act on-chain, but only inside strict safety rules.
 - Signs through Privy-managed wallets
 - Logs every approve/reject decision
 
-## Locked stack (this submission)
-
-- Runtime: Hono API on Bun
-- Execution and policy layer: Aegis
-- Signing and key custody: Privy server wallets
-- Network: Solana devnet
-
 ## Core idea
 
 Agents can decide what to do.
@@ -26,18 +19,6 @@ Agents can decide what to do.
 Agents cannot sign directly.
 
 Aegis is the gate between agent decisions and wallet signatures.
-
-## Why Aegis
-
-Wallet providers protect keys.
-
-Aegis protects execution.
-
-That is the distinction in this project:
-
-- Privy handles custody and signing infrastructure
-- Aegis decides what an agent is allowed to do before any signing request is sent
-- agents stay autonomous, but not unchecked
 
 ## Core features
 
@@ -52,24 +33,6 @@ That is the distinction in this project:
 - Per-tx cap and daily cap controls
 - Recipient, protocol, swap-pair, and action-scoped policy controls
 - Structured audit logs for every intent
-
-## MVP scope
-
-### In scope
-
-- 3 agents running independently
-- Orca swap adapter preferred on devnet
-- Raydium swap adapter available explicitly
-- Jupiter swap adapter available for mainnet-only paths
-- Privy signing integration
-- Policy gate in Aegis
-- Approved flow + rejected flow
-
-### Out of scope
-
-- Mainnet
-- Production custody (HSM/MPC)
-- Full dashboard UI
 
 ## Tech stack
 
@@ -92,13 +55,20 @@ External demo clients (not part of Aegis core):
 
 ## Setup
 
-### 1) Install
+### 1) Clone the repo
+
+```bash
+git clone https://github.com/fido1hn/agentic-autonomous-wallets.git
+cd agentic-autonomous-wallets
+```
+
+### 2) Install dependencies
 
 ```bash
 bun install
 ```
 
-### 2) Configure
+### 3) Configure environment
 
 ```bash
 cp .env.example .env
@@ -120,26 +90,27 @@ JUPITER_SWAP_URL=https://lite-api.jup.ag/swap/v1/swap
 App startup fails fast when `PRIVY_APP_ID` or `PRIVY_APP_SECRET` is missing.
 The interactive agent CLI additionally requires `OPENAI_API_KEY`.
 
-### 3) Run
+### 4) Start the API
 
 ```bash
 bun run start
 ```
 
 This starts the Hono API server on `http://localhost:3000` by default.
+Pending DB migrations are applied automatically on startup.
 
 OpenAPI docs are available at:
 
 - `GET /openapi.json` (raw OpenAPI spec)
 - `GET /docs` (Swagger UI)
 
-### 4) Test
+### 5) Test
 
 ```bash
 bun test
 ```
 
-### 5) Interactive agent CLI demo
+### 6) Interactive agent CLI demo
 
 Run one process per terminal and give each a unique name:
 
@@ -158,13 +129,13 @@ Then chat naturally in each terminal, e.g.:
 - `create your wallet`
 - `show your session`
 
-### 6) Policy preflight
+### 7) Policy preflight
 
 ```bash
 bun run policy:check
 ```
 
-### 7) Live Privy wallet smoke test (real API calls)
+### 8) Live Privy wallet smoke test (real API calls)
 
 ```bash
 bun run test:privy-live
@@ -199,15 +170,16 @@ Agent-scoped endpoints require:
 
 Use migrations as the source of truth for schema changes.
 
-### First-time setup
+### First run
 
 ```bash
-bun run db:generate
 bun run start
 ```
 
-`start` now applies pending migrations automatically before runtime work begins.
-If you want to run migrations without starting the runtime, use `bun run aegis:init`.
+You do not need to run `bun run db:generate` before `bun run start` unless you changed the schema locally and need to create a new migration file.
+
+`start` applies pending migrations automatically before runtime work begins.
+If you want to apply migrations without starting the API, use `bun run aegis:init`.
 
 ### Normal workflow after schema changes
 
@@ -232,19 +204,14 @@ Notes:
 
 ### Simple flow
 
-Agent signs up -> gets `agentId` + `apiKey`
-↓
-Agent requests wallet -> gets wallet binding for that `agentId`
-↓
-Agent sends `execute_intent` requests with `ExecutionIntent`
-↓
-Aegis checks rules (input, limits, allowlists, simulation)
-↓
-If approved, Aegis asks Privy to sign
-↓
-Privy signs (and provider path broadcasts) -> Aegis returns tx execution result
-↓
-Private key never touches agent logic or app code
+1. Agent signs up and gets `agentId` + `apiKey`
+2. Agent requests a wallet and gets a wallet binding for that `agentId`
+3. Agent sends `execute_intent` requests with `ExecutionIntent`
+4. Aegis checks rules: input, limits, allowlists, and simulation
+5. If approved, Aegis asks Privy to sign
+6. Privy signs and the provider path broadcasts the transaction
+7. Aegis returns the transaction result
+8. Private key material never touches agent logic or app code
 
 ### Security pipeline (actual execution order)
 
@@ -259,52 +226,11 @@ Private key never touches agent logic or app code
 
 If any step fails, execution is rejected with a reason code.
 
-Typical rejected write responses now include a stable `reasonCode` plus optional `reasonDetail`, for example:
-
-```json
-{
-  "status": "rejected",
-  "reasonCode": "INSUFFICIENT_FUNDS",
-  "reasonDetail": "Wallet does not have enough balance to complete this action.",
-  "policyChecks": ["rpc_simulation"]
-}
-```
-
-When a rejection comes from an assigned DSL policy, the result now also includes `policyMatch` so agents can explain exactly what blocked the action:
-
-```json
-{
-  "status": "rejected",
-  "reasonCode": "POLICY_DSL_MAX_PER_TX_EXCEEDED",
-  "reasonDetail": "Requested amount exceeds configured policy max.",
-  "policyChecks": [
-    "assigned_policies",
-    "policy:pol_123:active",
-    "rule:max_lamports_per_tx:pol_123"
-  ],
-  "policyMatch": {
-    "policyId": "pol_123",
-    "policyName": "Transfer cap",
-    "ruleKind": "max_lamports_per_tx",
-    "ruleConfig": {
-      "lteLamports": "100000000"
-    }
-  }
-}
-```
+Rejected responses include stable reason codes. Detailed request and response examples are in `docs/architecture.md`.
 
 ### Policy lifecycle
 
-Policies are now owned by the creating agent.
-
-That means:
-
-- `GET /policies` is a personal policy library, not a global list
-- policies can exist unassigned
-- policies can be assigned or unassigned from the agent wallet
-- `DELETE /policies/:policyId` archives the policy instead of removing it
-- archived policies cannot be edited or newly assigned
-- disabled policies may remain assigned but are skipped during evaluation
+Policies are owned by the creating agent and can be created, assigned, updated, unassigned, disabled, or archived.
 
 ### Policy DSL v2
 
@@ -325,29 +251,7 @@ v2 keeps the same flat `rules[]` model and adds stronger wallet controls:
 - `max_lamports_per_tx_by_action`
 - `max_lamports_per_tx_by_mint`
 
-Example v2 policy:
-
-```json
-{
-  "name": "Only Orca SOL -> USDC swaps",
-  "dsl": {
-    "version": "aegis.policy.v2",
-    "rules": [
-      { "kind": "allowed_actions", "actions": ["swap"] },
-      { "kind": "allowed_swap_protocols", "protocols": ["orca"] },
-      {
-        "kind": "allowed_swap_pairs",
-        "pairs": [
-          {
-            "fromMint": "So11111111111111111111111111111111111111112",
-            "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+Detailed policy examples are in `docs/architecture.md`.
 
 ### Policy demo flow
 
@@ -362,33 +266,10 @@ The current runtime supports:
 
 ### Swap backend behavior
 
-- `swapProtocol: "auto"` selects the best backend for the current environment
-- `auto` now prefers `orca`
-- `raydium` remains available explicitly
-- `jupiter` remains available explicitly and is still mainnet-only in this build
-- explicit Jupiter requests on devnet are rejected with `JUPITER_MAINNET_ONLY`
-- token resolution for the demo is intentionally narrow:
-  - `SOL` resolves to wrapped SOL
-  - `USDC` resolves automatically by environment and selected swap protocol
-    - devnet `auto`/`orca` -> Orca devUSDC `BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k`
-    - devnet `raydium` -> standard devnet USDC `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
-    - mainnet -> `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`
-  - any other output token must be provided as a mint address
-
-### ExecutionIntent example
-
-```json
-{
-  "agentId": "agent-mm-01",
-  "action": "swap",
-  "swapProtocol": "auto",
-  "fromMint": "So11111111111111111111111111111111111111112",
-  "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k",
-  "amountAtomic": "50000000",
-  "maxSlippageBps": 100,
-  "idempotencyKey": "9c8d8ef0-9d6f-4d2f-bf1f-278380d2e0d7"
-}
-```
+- `auto` prefers `orca` on devnet
+- `raydium` is available explicitly
+- `jupiter` is mainnet-only in this build
+- detailed backend behavior and payload examples are in `docs/architecture.md`
 
 ### Manual devnet demo sequence
 
