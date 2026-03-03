@@ -44,16 +44,25 @@ function deserializeTransaction(serializedTx: string): Transaction | VersionedTr
   }
 }
 
+async function simulateTransactionPayload(
+  connection: Connection,
+  transaction: Transaction | VersionedTransaction
+) {
+  const versioned =
+    transaction instanceof VersionedTransaction
+      ? transaction
+      : new VersionedTransaction(transaction.compileMessage());
+
+  return connection.simulateTransaction(versioned, {
+    replaceRecentBlockhash: true,
+    sigVerify: false
+  });
+}
+
 let simulateSerializedTransaction = async (serializedTx: string): Promise<void> => {
   const connection = new Connection(resolveSolanaRpc(), "confirmed");
   const transaction = deserializeTransaction(serializedTx);
-  const simulation =
-    transaction instanceof VersionedTransaction
-      ? await connection.simulateTransaction(transaction, {
-          replaceRecentBlockhash: true,
-          sigVerify: false
-        })
-      : await connection.simulateTransaction(transaction);
+  const simulation = await simulateTransactionPayload(connection, transaction);
   if (simulation.value.err) {
     throw new Error(JSON.stringify(simulation.value.err));
   }
@@ -453,13 +462,7 @@ export function setSimulateSerializedTransactionForTests(
     simulateSerializedTransaction = async (serializedTx: string): Promise<void> => {
       const connection = new Connection(resolveSolanaRpc(), "confirmed");
       const transaction = deserializeTransaction(serializedTx);
-      const simulation =
-        transaction instanceof VersionedTransaction
-          ? await connection.simulateTransaction(transaction, {
-              replaceRecentBlockhash: true,
-              sigVerify: false
-            })
-          : await connection.simulateTransaction(transaction);
+      const simulation = await simulateTransactionPayload(connection, transaction);
       if (simulation.value.err) {
         throw new Error(JSON.stringify(simulation.value.err));
       }
