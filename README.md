@@ -53,6 +53,12 @@ External demo clients (not part of Aegis core):
 - OpenAI Agents SDK CLI (`scripts/agent-cli.tsx`)
 - Any agent framework that can make HTTP requests
 
+## Demo video
+
+Watch the recorded demo on YouTube:
+
+- [Aegis demo video](https://youtu.be/eQNJ26FGQcU)
+
 ## Setup
 
 ### 1) Clone the repo
