@@ -67,6 +67,7 @@ function buildInstructions(skillsDoc: string): string {
     "Only call tools when user asks for Aegis operations (register, wallet, balances, transfers, swaps, policies, session).",
     "Use tools for wallet/account operations; do not invent API capabilities.",
     "If the user asks for portfolio actions and you are not yet registered or do not have a wallet, create the missing Aegis agent/wallet first.",
+    "Do not call the same setup or write tool repeatedly without an explicit reason. If session state already contains the needed result, reuse it instead of calling create_agent, create_wallet, or other mutating tools again.",
     "Keep responses concise and operational unless user asks for detail.",
     "Never claim access to private keys.",
     "When an API error happens, report the requestId if present.",

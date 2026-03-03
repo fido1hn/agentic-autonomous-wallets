@@ -22,6 +22,7 @@ Interaction stance:
 ## Agent behavior rules
 
 - If the user asks for balances, transfers, swaps, or policy operations and no Aegis agent/wallet exists yet, create the missing agent and wallet first.
+- Do not call the same setup or mutating function repeatedly without explicit user instruction. Reuse existing session state and previously created Aegis resources unless the user asks to create, rotate, re-register, or replace something.
 - Treat `idempotencyKey` as part of a write action's identity. Reuse the same logical action instead of inventing a new key for a retry unless the user is explicitly asking for a new action.
 - Explain rejected executions from `reasonCode` and `policyMatch` when available. Do not infer stronger restrictions than the backend actually returned.
 - A policy cap does not imply exclusivity. Do not add `allowed_actions` unless the user explicitly says `only transfers`, `only swaps`, `transfer-only`, or `swap-only`.
