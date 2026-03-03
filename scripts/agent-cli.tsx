@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AegisApiClient, AegisApiError } from "../src/demo/agent/AegisApiClient";
 import { loadSkillsDocument } from "../src/demo/agent/skillsLoader";
 import { createAgentSession } from "../src/demo/agent/session";
+import { AegisPolicyDslSchema } from "../src/types/policy";
 import type { ExecutionResultResponse } from "../src/demo/agent/types";
 
 interface CliConfig {
@@ -59,13 +60,24 @@ function renderApiError(error: unknown): string {
 
 function buildInstructions(skillsDoc: string): string {
   return [
-    "You are an autonomous wallet assistant for Aegis.",
+    "You are a generic agent operating through Aegis.",
+    "Your role or persona may vary by deployment, but your Aegis operating behavior should remain disciplined, precise, and consistent.",
+    "Treat the Aegis wallet as your execution environment on the user's behalf: you manage actions through Aegis, but you do not own or expose private keys.",
     "Do normal conversation naturally.",
-    "Only call tools when user asks for Aegis operations (register, wallet, balances, transfers, swaps, session).",
+    "Only call tools when user asks for Aegis operations (register, wallet, balances, transfers, swaps, policies, session).",
     "Use tools for wallet/account operations; do not invent API capabilities.",
+    "If the user asks for portfolio actions and you are not yet registered or do not have a wallet, create the missing Aegis agent/wallet first.",
     "Keep responses concise and operational unless user asks for detail.",
     "Never claim access to private keys.",
     "When an API error happens, report the requestId if present.",
+    "For write actions, treat idempotency as part of the operation identity. Do not retry the same intended action with a fresh idempotency key unless the user is intentionally requesting a new action.",
+    "Translate policy requests carefully: 'per day' means a daily cap, 'per transaction' or 'per tx' means a transaction cap, 'only send to' means allowed recipients, 'block send to' means blocked recipients, and protocol-specific swap restrictions should use the explicit protocol rules.",
+    "Do not add allowed_actions unless the user explicitly asks for exclusivity such as 'only transfers', 'transfer-only', 'only swaps', or 'swap-only'. A cap on transfers does not mean swaps should be blocked.",
+    "When creating a policy, prefer the narrowest correct DSL rule and preserve the user's scope exactly instead of approximating it.",
+    "Explain failures from API reasonCode and policyMatch data when available. Do not guess a stronger restriction than the policy actually declares.",
+    "Treat update_policy dsl changes as full replacement of the DSL, not a patch merge.",
+    "Be careful with units: explain values in SOL when helpful, but policy and execution payloads use lamports/atomic amounts.",
+    "USDC is the only symbol resolved automatically in this build. For other SPL tokens, use explicit mint addresses.",
     "",
     "Aegis skills contract follows:",
     skillsDoc,
@@ -325,15 +337,14 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
       tool({
         name: "create_policy",
         description:
-          "Create a wallet policy. Pass dslJson as a JSON string matching aegis.policy.v1 or aegis.policy.v2. Useful rule kinds include allowed_recipients, blocked_recipients, allowed_swap_protocols, allowed_swap_pairs, max_lamports_per_day_by_action, max_lamports_per_tx_by_action, and max_lamports_per_tx_by_mint. Use an empty description string if not needed.",
+          "Create a wallet policy. Pass dsl as a JSON object matching aegis.policy.v1 or aegis.policy.v2. Map natural language carefully: 'per day' -> max_lamports_per_day_by_action, 'per transaction/per tx' -> max_lamports_per_tx or max_lamports_per_tx_by_action, recipient restrictions -> allowed_recipients/blocked_recipients, and protocol restrictions -> allowed_swap_protocols. Do not add allowed_actions unless the user explicitly wants only transfers or only swaps. Use an empty description string if not needed.",
         parameters: z.object({
           name: z.string(),
           description: z.string(),
-          dslJson: z.string(),
+          dsl: AegisPolicyDslSchema,
         }),
-        execute: async ({ name, description, dslJson }) => {
+        execute: async ({ name, description, dsl }) => {
           const state = requireSession();
-          const dsl = JSON.parse(dslJson) as Record<string, unknown>;
           const policy = await api.createPolicy(state.agentId!, state.apiKey!, {
             name,
             description: description.trim() === "" ? undefined : description,
@@ -351,21 +362,21 @@ function AgentCliApp({ config, skillsDoc }: { config: CliConfig; skillsDoc: stri
       tool({
         name: "update_policy",
         description:
-          "Update a policy. Use status=unchanged to keep status. Use empty strings for name/description/dslJson when not changing them. dslJson may be aegis.policy.v1 or aegis.policy.v2.",
+          "Update a policy. Use status=unchanged to keep status. Use empty strings for name/description when not changing them. Pass dsl as a JSON object when changing the DSL, or null to leave the DSL unchanged. Preserve the user's intended scope exactly when updating caps or recipients, and do not introduce allowed_actions unless the user explicitly asks for exclusivity.",
         parameters: z.object({
           policyId: z.string(),
           name: z.string(),
           description: z.string(),
           status: z.enum(["unchanged", "active", "disabled"]),
-          dslJson: z.string(),
+          dsl: AegisPolicyDslSchema.nullable(),
         }),
-        execute: async ({ policyId, name, description, status, dslJson }) => {
+        execute: async ({ policyId, name, description, status, dsl }) => {
           const state = requireSession();
           const update: Record<string, unknown> = {};
           if (name.trim() !== "") update.name = name;
           if (description.trim() !== "") update.description = description;
           if (status !== "unchanged") update.status = status;
-          if (dslJson.trim() !== "") update.dsl = JSON.parse(dslJson) as Record<string, unknown>;
+          if (dsl !== null) update.dsl = dsl;
           const policy = await api.updatePolicy(state.agentId!, state.apiKey!, policyId, update);
           addToolEvent("update_policy", "ok", `policyId=${policy.id} status=${policy.status}`);
           return policy;

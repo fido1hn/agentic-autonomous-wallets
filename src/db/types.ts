@@ -5,13 +5,14 @@ export type AgentApiKeyStatus = "active" | "revoked";
 export type PolicyStatus = "active" | "disabled" | "archived";
 
 import type { AegisPolicyDsl } from "../types/policy";
+import type { ExecutionResult, IntentExecutionState, PolicyMatchInfo } from "../types/intents";
 import type {
   agentApiKeysTable,
   dailyActionSpendCountersTable,
   dailySpendCountersTable,
   agentsTable,
   executionLogsTable,
-  intentIdempotencyRecordsTable,
+  intentExecutionsTable,
   policiesTable,
   walletBindingsTable,
   walletPolicyAssignmentsTable
@@ -25,7 +26,7 @@ type PolicyRow = typeof policiesTable.$inferSelect;
 type WalletPolicyAssignmentRow = typeof walletPolicyAssignmentsTable.$inferSelect;
 type DailySpendCounterRow = typeof dailySpendCountersTable.$inferSelect;
 type DailyActionSpendCounterRow = typeof dailyActionSpendCountersTable.$inferSelect;
-type IntentIdempotencyRecordRow = typeof intentIdempotencyRecordsTable.$inferSelect;
+type IntentExecutionRow = typeof intentExecutionsTable.$inferSelect;
 
 export type AgentRecord = Omit<AgentRow, "status"> & { status: AgentStatus };
 export type WalletBindingRecord = Omit<WalletBindingRow, "provider" | "walletAddress"> & {
@@ -41,12 +42,32 @@ export type PolicyRecord = Omit<PolicyRow, "status" | "dslJson" | "ownerAgentId"
 export type WalletPolicyAssignmentRecord = WalletPolicyAssignmentRow;
 export type DailySpendCounterRecord = DailySpendCounterRow;
 export type DailyActionSpendCounterRecord = DailyActionSpendCounterRow;
-export type IntentIdempotencyRecord = IntentIdempotencyRecordRow;
 
 export interface ExecutionLogRecord extends Omit<ExecutionLogRow, "status" | "provider" | "policyChecksJson"> {
   status: ExecutionStatus;
   provider?: ProviderName;
   policyChecks: string[];
+}
+
+export interface IntentExecutionRecord
+  extends Omit<
+    IntentExecutionRow,
+    | "status"
+    | "provider"
+    | "intentJson"
+    | "resultJson"
+    | "serializedTxJson"
+    | "txSignaturesJson"
+    | "policyChecksJson"
+    | "policyMatchJson"
+  > {
+  status: IntentExecutionState;
+  provider?: ProviderName;
+  intent: import("../types/intents").ExecutionIntent;
+  result?: ExecutionResult;
+  txSignatures?: string[];
+  policyChecks?: string[];
+  policyMatch?: PolicyMatchInfo;
 }
 
 export interface CreateAgentInput {
@@ -68,6 +89,29 @@ export interface CreateExecutionLogInput {
   provider?: ProviderName;
   txSignature?: string;
   policyChecks: string[];
+}
+
+export interface CreateIntentExecutionInput {
+  agentId: string;
+  idempotencyKey: string;
+  action: "swap" | "transfer";
+  intent: import("../types/intents").ExecutionIntent;
+}
+
+export interface FinalizeIntentExecutionSuccessInput {
+  expectedStatus: "broadcast";
+  provider: ProviderName;
+  txSignature: string;
+  txSignatures?: string[];
+  policyChecks: string[];
+}
+
+export interface FinalizeIntentExecutionFailureInput {
+  expectedStatus: Exclude<IntentExecutionState, "finalized" | "failed">;
+  reasonCode: string;
+  reasonDetail?: string;
+  policyChecks?: string[];
+  policyMatch?: PolicyMatchInfo;
 }
 
 export interface CreateAgentApiKeyInput {
@@ -161,9 +205,36 @@ export interface DailyActionSpendCounterRepository {
   ): Promise<DailyActionSpendCounterRecord>;
 }
 
-export interface IntentIdempotencyRepository {
-  find(agentId: string, idempotencyKey: string): Promise<IntentIdempotencyRecord | null>;
-  save(agentId: string, idempotencyKey: string, resultJson: string): Promise<IntentIdempotencyRecord>;
+export interface IntentExecutionRepository {
+  createReceived(input: CreateIntentExecutionInput): Promise<IntentExecutionRecord>;
+  findByAgentAndIdempotencyKey(agentId: string, idempotencyKey: string): Promise<IntentExecutionRecord | null>;
+  findById(id: string): Promise<IntentExecutionRecord | null>;
+  listRecoverable(): Promise<IntentExecutionRecord[]>;
+  transitionToBroadcast(
+    id: string,
+    patch: {
+      expectedStatus: "received";
+      currentStep?: string;
+      walletRef?: string;
+      walletAddress?: string;
+      provider: ProviderName;
+      txSignature: string;
+      txSignatures?: string[];
+      policyChecks: string[];
+    }
+  ): Promise<IntentExecutionRecord | null>;
+  finalizeSuccess(
+    id: string,
+    patch: {
+      expectedStatus: "broadcast" | "finalized";
+      result: ExecutionResult;
+      spendAppliedAt?: string;
+      auditLoggedAt?: string;
+    }
+  ): Promise<IntentExecutionRecord | null>;
+  finalizeFailure(id: string, patch: FinalizeIntentExecutionFailureInput & { result: ExecutionResult }): Promise<IntentExecutionRecord | null>;
+  markSpendApplied(id: string, expectedStatus: "broadcast" | "finalized", timestamp: string): Promise<boolean>;
+  markAuditLogged(id: string, expectedStatus: "broadcast" | "finalized", timestamp: string): Promise<boolean>;
 }
 
 export interface Repositories {
@@ -175,5 +246,5 @@ export interface Repositories {
   walletPolicyAssignments: WalletPolicyAssignmentRepository;
   dailySpendCounters: DailySpendCounterRepository;
   dailyActionSpendCounters: DailyActionSpendCounterRepository;
-  intentIdempotency: IntentIdempotencyRepository;
+  intentExecutions: IntentExecutionRepository;
 }

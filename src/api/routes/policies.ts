@@ -1,8 +1,8 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { getActiveAppContext } from "../appContext";
-import { jsonError, parseLimit } from "../http";
-import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
+import { parseLimit } from "../http";
 import { parseAegisPolicyDsl } from "../../types/policy";
+import { apiErrorBody, authenticateAgentRequest, ensureScopedAgentAccess } from "./routeHelpers";
 
 const authHeadersSchema = z.object({
   "x-agent-id": z.string(),
@@ -12,14 +12,14 @@ const authHeadersSchema = z.object({
 const createPolicyBodySchema = z.object({
   name: z.string().trim().min(1),
   description: z.string().optional(),
-  dsl: z.object({}).passthrough(),
+  dsl: z.looseObject({}),
 });
 
 const updatePolicyBodySchema = z.object({
   name: z.string().trim().min(1).optional(),
   description: z.string().optional(),
   status: z.enum(["active", "disabled"]).optional(),
-  dsl: z.object({}).passthrough().optional(),
+  dsl: z.looseObject({}).optional(),
 });
 
 const listPoliciesQuerySchema = z.object({
@@ -51,7 +51,7 @@ const policySchema = z.object({
   name: z.string(),
   description: z.string().nullable().optional(),
   status: z.enum(["active", "disabled", "archived"]),
-  dsl: z.object({}).passthrough(),
+  dsl: z.looseObject({}),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -138,12 +138,25 @@ const createPolicyRoute = createRoute({
         },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(createPolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(createPolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const body = c.req.valid("json");
 
@@ -151,18 +164,17 @@ policiesRoutes.openapi(createPolicyRoute, (async (c: any) => {
   try {
     dsl = parseAegisPolicyDsl(body.dsl);
   } catch {
-    return jsonError(c, 400, "POLICY_DSL_INVALID", "dsl is invalid");
+    return c.json(apiErrorBody(requestId, "POLICY_DSL_INVALID", "dsl is invalid"), 400);
   }
 
-  const { policyService } = getActiveAppContext();
-  const policy = await policyService.createPolicy(auth.agentId, {
+  const policy = await policyService.createPolicy(headerAgentId, {
     name: body.name.trim(),
     description: body.description,
     dsl,
   });
 
-  return c.json(policy);
-}) as any);
+  return c.json(policy, 200);
+});
 
 const listPoliciesRoute = createRoute({
   method: "get",
@@ -184,25 +196,37 @@ const listPoliciesRoute = createRoute({
         },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(listPoliciesRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(listPoliciesRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const query = c.req.valid("query");
   const limit = parseLimit(query.limit, 50, 200);
   const assigned = parseAssignedQuery(query.assigned);
-  const { policyService } = getActiveAppContext();
-  const data = await policyService.listPolicies(auth.agentId, {
+  const data = await policyService.listPolicies(headerAgentId, {
     limit,
     status: query.status,
     assigned,
-    assignedAgentId: auth.agentId,
+    assignedAgentId: headerAgentId,
   });
-  return c.json({ count: data.length, data });
-}) as any);
+  return c.json({ count: data.length, data }, 200);
+});
 
 const getPolicyRoute = createRoute({
   method: "get",
@@ -232,29 +256,42 @@ const getPolicyRoute = createRoute({
         "application/json": { schema: errorSchema },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(getPolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
-
-  const { policyId } = c.req.valid("param");
-  const { policyService, db } = getActiveAppContext();
-  const policy = await policyService.getPolicy(auth.agentId, policyId);
-  if (!policy) {
-    return jsonError(c, 404, "POLICY_NOT_FOUND", "Policy not found");
+policiesRoutes.openapi(getPolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
   }
 
-  const assignment = await db.repositories.walletPolicyAssignments.find(auth.agentId, policyId);
-  return c.json({
-    ...policy,
-    assignment: {
-      assignedToAgentWallet: !!assignment,
-      priority: assignment?.priority,
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService, db } = getActiveAppContext();
+
+  const { policyId } = c.req.valid("param");
+  const policy = await policyService.getPolicy(headerAgentId, policyId);
+  if (!policy) {
+    return c.json(apiErrorBody(requestId, "POLICY_NOT_FOUND", "Policy not found"), 404);
+  }
+
+  const assignment = await db.repositories.walletPolicyAssignments.find(headerAgentId, policyId);
+  return c.json(
+    {
+      ...policy,
+      assignment: {
+        assignedToAgentWallet: !!assignment,
+        priority: assignment?.priority,
+      },
     },
-  });
-}) as any);
+    200
+  );
+});
 
 const updatePolicyRoute = createRoute({
   method: "patch",
@@ -289,12 +326,29 @@ const updatePolicyRoute = createRoute({
         "application/json": { schema: errorSchema },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(updatePolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(updatePolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const { policyId } = c.req.valid("param");
   const body = c.req.valid("json");
@@ -302,31 +356,30 @@ policiesRoutes.openapi(updatePolicyRoute, (async (c: any) => {
   let dsl = undefined;
   if (body.dsl !== undefined) {
     try {
-        dsl = parseAegisPolicyDsl(body.dsl);
+      dsl = parseAegisPolicyDsl(body.dsl);
     } catch {
-      return jsonError(c, 400, "POLICY_DSL_INVALID", "dsl is invalid");
+      return c.json(apiErrorBody(requestId, "POLICY_DSL_INVALID", "dsl is invalid"), 400);
     }
   }
 
-  const { policyService } = getActiveAppContext();
   try {
-    const updated = await policyService.updatePolicy(auth.agentId, policyId, {
+    const updated = await policyService.updatePolicy(headerAgentId, policyId, {
       name: body.name,
       description: body.description,
       status: body.status,
       dsl,
     });
-    return c.json(updated);
+    return c.json(updated, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "POLICY_ARCHIVED") {
-      return jsonError(c, 400, "POLICY_ARCHIVED", "Archived policies cannot be edited");
+      return c.json(apiErrorBody(requestId, "POLICY_ARCHIVED", "Archived policies cannot be edited"), 400);
     }
     if (error instanceof Error && error.message === "POLICY_NOT_FOUND") {
-      return jsonError(c, 404, "POLICY_NOT_FOUND", "Policy not found");
+      return c.json(apiErrorBody(requestId, "POLICY_NOT_FOUND", "Policy not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not update policy");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not update policy"), 500);
   }
-}) as any);
+});
 
 const archivePolicyRoute = createRoute({
   method: "delete",
@@ -354,25 +407,41 @@ const archivePolicyRoute = createRoute({
         "application/json": { schema: errorSchema },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(archivePolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(archivePolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const { policyId } = c.req.valid("param");
-  const { policyService } = getActiveAppContext();
   try {
-    const archived = await policyService.archivePolicy(auth.agentId, policyId);
-    return c.json({ id: archived.id, status: "archived" as const });
+    const archived = await policyService.archivePolicy(headerAgentId, policyId);
+    return c.json({ id: archived.id, status: "archived" as const }, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "POLICY_NOT_FOUND") {
-      return jsonError(c, 404, "POLICY_NOT_FOUND", "Policy not found");
+      return c.json(apiErrorBody(requestId, "POLICY_NOT_FOUND", "Policy not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not archive policy");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not archive policy"), 500);
   }
-}) as any);
+});
 
 const assignPolicyRoute = createRoute({
   method: "post",
@@ -411,38 +480,76 @@ const assignPolicyRoute = createRoute({
         },
       },
     },
+    400: {
+      description: "Invalid assignment",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(assignPolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(assignPolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
 
-  const { agentId: scopedAgentId, policyId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) return scopeError;
-
-  const body = c.req.valid("json") ?? {};
+  const { requestId, agentId: headerAgentId } = auth;
   const { policyService } = getActiveAppContext();
 
+  const { agentId: scopedAgentId, policyId } = c.req.valid("param");
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
+  }
+
+  const body = c.req.valid("json") ?? {};
+
   try {
-    await policyService.assignPolicyToAgentWallet(auth.agentId, scopedAgentId, policyId, {
+    await policyService.assignPolicyToAgentWallet(headerAgentId, scopedAgentId, policyId, {
       priority: body.priority,
     });
-    return c.json({ agentId: scopedAgentId, policyId, status: "assigned" as const });
+    return c.json({ agentId: scopedAgentId, policyId, status: "assigned" as const }, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
-      return jsonError(c, 404, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found");
+      return c.json(apiErrorBody(requestId, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found"), 404);
     }
     if (error instanceof Error && error.message === "POLICY_NOT_FOUND") {
-      return jsonError(c, 404, "POLICY_NOT_FOUND", "Policy not found");
+      return c.json(apiErrorBody(requestId, "POLICY_NOT_FOUND", "Policy not found"), 404);
     }
     if (error instanceof Error && error.message === "POLICY_ARCHIVED") {
-      return jsonError(c, 400, "POLICY_ARCHIVED", "Archived policies cannot be assigned");
+      return c.json(apiErrorBody(requestId, "POLICY_ARCHIVED", "Archived policies cannot be assigned"), 400);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not assign policy");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not assign policy"), 500);
   }
-}) as any);
+});
 
 const unassignPolicyRoute = createRoute({
   method: "delete",
@@ -471,31 +578,55 @@ const unassignPolicyRoute = createRoute({
         "application/json": { schema: errorSchema },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(unassignPolicyRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(unassignPolicyRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const { agentId: scopedAgentId, policyId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
+  }
 
-  const { policyService } = getActiveAppContext();
   try {
-    await policyService.unassignPolicyFromAgentWallet(auth.agentId, scopedAgentId, policyId);
-    return c.json({ agentId: scopedAgentId, policyId, status: "unassigned" as const });
+    await policyService.unassignPolicyFromAgentWallet(headerAgentId, scopedAgentId, policyId);
+    return c.json({ agentId: scopedAgentId, policyId, status: "unassigned" as const }, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
-      return jsonError(c, 404, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found");
+      return c.json(apiErrorBody(requestId, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found"), 404);
     }
     if (error instanceof Error && error.message === "POLICY_NOT_FOUND") {
-      return jsonError(c, 404, "POLICY_NOT_FOUND", "Policy not found");
+      return c.json(apiErrorBody(requestId, "POLICY_NOT_FOUND", "Policy not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not unassign policy");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not unassign policy"), 500);
   }
-}) as any);
+});
 
 const listAgentPoliciesRoute = createRoute({
   method: "get",
@@ -525,27 +656,57 @@ const listAgentPoliciesRoute = createRoute({
         },
       },
     },
+    401: {
+      description: "Unauthorized",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    403: {
+      description: "Forbidden",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    404: {
+      description: "Wallet not found",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": { schema: errorSchema },
+      },
+    },
   },
 });
 
-policiesRoutes.openapi(listAgentPoliciesRoute, (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) return auth;
+policiesRoutes.openapi(listAgentPoliciesRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { policyService } = getActiveAppContext();
 
   const { agentId: scopedAgentId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
+  }
 
-  const { policyService } = getActiveAppContext();
   try {
-    const data = await policyService.listAgentWalletPoliciesWithAssignments(auth.agentId, scopedAgentId);
-    return c.json({ agentId: scopedAgentId, count: data.length, data });
+    const data = await policyService.listAgentWalletPoliciesWithAssignments(headerAgentId, scopedAgentId);
+    return c.json({ agentId: scopedAgentId, count: data.length, data }, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
-      return jsonError(c, 404, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found");
+      return c.json(apiErrorBody(requestId, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not list assigned policies");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not list assigned policies"), 500);
   }
-}) as any);
+});
 
 export { policiesRoutes };

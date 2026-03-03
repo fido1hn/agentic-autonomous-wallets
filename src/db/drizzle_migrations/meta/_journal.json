@@ -50,6 +50,13 @@
       "when": 1772317200000,
       "tag": "0006_daily_action_spend_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1772403600000,
+      "tag": "0007_intent_execution_state_machine",
+      "breakpoints": true
     }
   ]
 }

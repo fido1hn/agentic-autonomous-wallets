@@ -1,6 +1,7 @@
 import { connectSqlite, resolveDbPath, runDrizzleMigrations, type SqliteContext } from "../db/sqlite";
 import { AgentAuthService } from "../services/agentAuthService";
 import { AgentService } from "../services/agentService";
+import { IntentExecutionService } from "../services/intentExecutionService";
 import { AgentWalletService } from "../services/agentWalletService";
 import { PolicyService } from "../services/policyService";
 import { assertPrivyConfig } from "../wallet/privyClient";
@@ -12,6 +13,7 @@ export interface AppContext {
   agentWalletService: AgentWalletService;
   agentAuthService: AgentAuthService;
   policyService: PolicyService;
+  intentExecutionService: IntentExecutionService;
 }
 
 let activeAppContext: AppContext | null = null;
@@ -46,6 +48,7 @@ export async function createAppContext(): Promise<AppContext> {
     db.repositories.walletBindings,
     db.repositories.walletPolicyAssignments
   );
+  const intentExecutionService = new IntentExecutionService(db, agentWalletService, policyService);
 
   const context: AppContext = {
     db,
@@ -53,10 +56,12 @@ export async function createAppContext(): Promise<AppContext> {
     agentService,
     agentWalletService,
     agentAuthService,
-    policyService
+    policyService,
+    intentExecutionService
   };
 
   activeAppContext = context;
+  await intentExecutionService.resumeRecoverableExecutions();
   return context;
 }
 

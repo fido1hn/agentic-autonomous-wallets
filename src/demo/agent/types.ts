@@ -41,7 +41,7 @@ export interface ExecutionIntentRequest {
   agentId: string;
   action: "swap" | "transfer";
   amountAtomic: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
   walletAddress?: string;
   swapProtocol?: "auto" | "jupiter" | "raydium" | "orca";
   fromMint?: string;
@@ -58,7 +58,7 @@ export interface SwapTokensInput {
   toToken: string;
   amountLamports: string;
   maxSlippageBps?: number;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
 export type ExecutionResultResponse =

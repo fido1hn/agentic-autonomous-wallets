@@ -44,6 +44,7 @@ describe("AegisApiClient", () => {
     const result = await client.transferSol("agent-1", "api-key", {
       recipientAddress: "recipient",
       amountLamports: "5000",
+      idempotencyKey: "idem-transfer-sol",
     });
     expect(result.status).toBe("approved");
   });
@@ -69,12 +70,14 @@ describe("AegisApiClient", () => {
       recipientAddress: "recipient",
       mintAddress: "mint-1",
       amountAtomic: "10",
+      idempotencyKey: "idem-transfer-spl",
     });
     process.env.SOLANA_RPC = "https://api.devnet.solana.com";
     const swap = await client.swapTokens("agent-1", "api-key", {
       fromToken: "SOL",
       toToken: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
       amountLamports: "7000",
+      idempotencyKey: "idem-swap-1",
     });
 
     expect(swap.status).toBe("approved");
@@ -94,6 +97,7 @@ describe("AegisApiClient", () => {
       fromToken: "SOL",
       toToken: "USDC",
       amountLamports: "1000",
+      idempotencyKey: "idem-swap-devnet",
     });
     expect(result.status).toBe("approved");
   });
@@ -113,6 +117,7 @@ describe("AegisApiClient", () => {
       fromToken: "SOL",
       toToken: "USDC",
       amountLamports: "1000",
+      idempotencyKey: "idem-swap-raydium",
     });
     expect(result.status).toBe("approved");
   });
@@ -130,6 +135,7 @@ describe("AegisApiClient", () => {
       fromToken: "SOL",
       toToken: "USDC",
       amountLamports: "1000",
+      idempotencyKey: "idem-swap-mainnet",
     });
     expect(result.status).toBe("approved");
   });
@@ -142,6 +148,7 @@ describe("AegisApiClient", () => {
         fromToken: "SOL",
         toToken: "USDT",
         amountLamports: "1000",
+        idempotencyKey: "idem-swap-unsupported",
       })
     ).rejects.toThrow("Only USDC is supported by symbol in this build");
   });

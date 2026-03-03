@@ -20,7 +20,7 @@ export function jsonError(
   status: ContentfulStatusCode,
   code: string,
   message: string
-): Response {
+) {
   return c.json(
     {
       error: {

@@ -6,5 +6,6 @@ CREATE TABLE `daily_action_spend_counters` (
   `spent_lamports` text NOT NULL,
   `updated_at` text NOT NULL
 );
+--> statement-breakpoint
 CREATE UNIQUE INDEX `daily_action_spend_counters_agent_day_action_idx`
   ON `daily_action_spend_counters` (`agent_id`, `day_key`, `action`);

@@ -1,7 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { getActiveAppContext } from "../appContext";
-import { jsonError } from "../http";
-import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
+import { apiErrorBody, authenticateAgentRequest, ensureScopedAgentAccess } from "./routeHelpers";
 
 const authHeadersSchema = z.object({
   "x-agent-id": z.string(),
@@ -17,7 +16,7 @@ const walletResponseSchema = z.object({
   walletRef: z.string(),
   walletAddress: z.string().optional(),
   provider: z.literal("privy"),
-  updatedAt: z.string(),
+  updatedAt: z.string().optional(),
 });
 
 const errorSchema = z.object({
@@ -71,35 +70,42 @@ const createWalletRoute = createRoute({
         },
       },
     },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-walletsRoutes.openapi(
-  createWalletRoute,
-  (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) {
-    return auth;
+walletsRoutes.openapi(createWalletRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
   }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { agentWalletService } = getActiveAppContext();
 
   const { agentId: scopedAgentId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) {
-    return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
   }
 
-  const { agentWalletService } = getActiveAppContext();
   try {
     const wallet = await agentWalletService.createAgentWallet(scopedAgentId);
-    return c.json(wallet);
+    return c.json(wallet, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "AGENT_NOT_FOUND") {
-      return jsonError(c, 404, "AGENT_NOT_FOUND", "Agent not found");
+      return c.json(apiErrorBody(requestId, "AGENT_NOT_FOUND", "Agent not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not create wallet");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not create wallet"), 500);
   }
-  }) as any,
-);
+});
 
 const getWalletRoute = createRoute({
   method: "get",
@@ -142,34 +148,41 @@ const getWalletRoute = createRoute({
         },
       },
     },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-walletsRoutes.openapi(
-  getWalletRoute,
-  (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) {
-    return auth;
+walletsRoutes.openapi(getWalletRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
   }
+
+  const { requestId, agentId: headerAgentId } = auth;
+  const { agentWalletService } = getActiveAppContext();
 
   const { agentId: scopedAgentId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) {
-    return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
   }
 
-  const { agentWalletService } = getActiveAppContext();
   try {
     const wallet = await agentWalletService.getAgentWallet(scopedAgentId);
-    return c.json(wallet);
+    return c.json(wallet, 200);
   } catch (error) {
     if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
-      return jsonError(c, 404, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found");
+      return c.json(apiErrorBody(requestId, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found"), 404);
     }
-    return jsonError(c, 500, "INTERNAL_ERROR", "Could not load wallet");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Could not load wallet"), 500);
   }
-  }) as any,
-);
+});
 
 export { walletsRoutes };

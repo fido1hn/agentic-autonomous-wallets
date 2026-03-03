@@ -1,7 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { getActiveAppContext } from "../appContext";
-import { jsonError, parseLimit } from "../http";
-import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
+import { parseLimit } from "../http";
+import { apiErrorBody, authenticateAgentRequest, ensureScopedAgentAccess } from "./routeHelpers";
 
 const executionRoutes = new OpenAPIHono();
 
@@ -77,34 +77,52 @@ const listExecutionsRoute = createRoute({
         },
       },
     },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-executionRoutes.openapi(
-  listExecutionsRoute,
-  (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) {
-    return auth;
+executionRoutes.openapi(listExecutionsRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
   }
 
+  const { requestId, agentId: headerAgentId } = auth;
+  const { db } = getActiveAppContext();
+
   const { agentId: scopedAgentId } = c.req.valid("param");
-  const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-  if (scopeError) {
-    return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
   }
 
   const query = c.req.valid("query");
   const limit = parseLimit(query.limit, 50, 200);
-  const { db } = getActiveAppContext();
 
   try {
     const logs = await db.repositories.executionLogs.listByAgentId(scopedAgentId, { limit });
-    return c.json({ agentId: scopedAgentId, count: logs.length, data: logs });
+    return c.json(
+      {
+        agentId: scopedAgentId,
+        count: logs.length,
+        data: logs.map((log) => ({
+          ...log,
+          reasonCode: log.reasonCode ?? undefined,
+          txSignature: log.txSignature ?? undefined,
+        })),
+      },
+      200
+    );
   } catch {
-    return jsonError(c, 500, "INTERNAL_ERROR", "Failed to list executions");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Failed to list executions"), 500);
   }
-  }) as any,
-);
+});
 
 export { executionRoutes };

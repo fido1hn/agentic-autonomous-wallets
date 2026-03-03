@@ -16,7 +16,8 @@ function baseIntent(overrides?: Partial<ExecutionIntent>): ExecutionIntent {
     toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     amountAtomic: "1000000",
     maxSlippageBps: 100,
-    ...overrides
+    ...overrides,
+    idempotencyKey: overrides?.idempotencyKey ?? "idem-policy-engine"
   };
 }
 

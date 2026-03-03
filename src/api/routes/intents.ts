@@ -1,8 +1,8 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { routeIntent } from "../../core/intentRouter";
 import { validateExecutionIntent } from "../../types/intents";
-import { jsonError } from "../http";
-import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
+import { getActiveAppContext } from "../appContext";
+import { apiErrorBody, authenticateAgentRequest, ensureScopedAgentAccess } from "./routeHelpers";
 
 const intentsRoutes = new OpenAPIHono();
 
@@ -11,22 +11,20 @@ const authHeadersSchema = z.object({
   "x-agent-api-key": z.string(),
 });
 
-const executionIntentBodySchema = z
-  .object({
-    agentId: z.string(),
-    action: z.enum(["swap", "transfer"]),
-    amountAtomic: z.string(),
-    idempotencyKey: z.string().optional(),
-    walletAddress: z.string().optional(),
-    swapProtocol: z.enum(["auto", "jupiter", "raydium", "orca"]).optional(),
-    fromMint: z.string().optional(),
-    toMint: z.string().optional(),
-    maxSlippageBps: z.number().int().min(1).max(10_000).optional(),
-    transferAsset: z.enum(["native", "spl"]).optional(),
-    recipientAddress: z.string().optional(),
-    mintAddress: z.string().optional(),
-  })
-  .passthrough();
+const executionIntentBodySchema = z.looseObject({
+  agentId: z.string(),
+  action: z.enum(["swap", "transfer"]),
+  amountAtomic: z.string(),
+  idempotencyKey: z.string(),
+  walletAddress: z.string().optional(),
+  swapProtocol: z.enum(["auto", "jupiter", "raydium", "orca"]).optional(),
+  fromMint: z.string().optional(),
+  toMint: z.string().optional(),
+  maxSlippageBps: z.number().int().min(1).max(10_000).optional(),
+  transferAsset: z.enum(["native", "spl"]).optional(),
+  recipientAddress: z.string().optional(),
+  mintAddress: z.string().optional(),
+});
 
 const intentApprovedSchema = z.object({
   status: z.literal("approved"),
@@ -125,16 +123,24 @@ const executeIntentRoute = createRoute({
         },
       },
     },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: genericErrorSchema,
+        },
+      },
+    },
   },
 });
 
-intentsRoutes.openapi(
-  executeIntentRoute,
-  (async (c: any) => {
-  const auth = await requireAgentAuth(c);
-  if (auth instanceof Response) {
-    return auth;
+intentsRoutes.openapi(executeIntentRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
   }
+
+  const { requestId, agentId: headerAgentId } = auth;
 
   const input = c.req.valid("json");
   const validated = validateExecutionIntent(input);
@@ -142,27 +148,35 @@ intentsRoutes.openapi(
     return c.json(
       {
         error: {
-          code: "INTENT_VALIDATION_FAILED",
+          code: "INTENT_VALIDATION_FAILED" as const,
           message: "ExecutionIntent payload is invalid",
-          errors: validated.errors
+          errors: validated.errors,
         }
       },
       400
     );
   }
 
-  const scopeError = ensureAgentScope(c, auth.agentId, validated.intent.agentId);
-  if (scopeError) {
-    return scopeError;
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, validated.intent.agentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
   }
 
   try {
     const result = await routeIntent(validated.intent);
-    return c.json(result);
+    if (result.status === "rejected") {
+      return c.json(
+        {
+          ...result,
+          policyChecks: result.policyChecks ?? [],
+        },
+        200
+      );
+    }
+    return c.json(result, 200);
   } catch {
-    return jsonError(c, 500, "INTERNAL_ERROR", "Failed to execute intent");
+    return c.json(apiErrorBody(requestId, "INTERNAL_ERROR", "Failed to execute intent"), 500);
   }
-  }) as any,
-);
+});
 
 export { intentsRoutes };

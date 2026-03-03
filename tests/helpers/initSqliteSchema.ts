@@ -68,18 +68,39 @@ export function initSqliteSchema(client: Database): void {
     CREATE UNIQUE INDEX daily_action_spend_counters_agent_day_action_idx
       ON daily_action_spend_counters(agent_id, day_key, action);
 
-    CREATE TABLE intent_idempotency_records (
+    CREATE TABLE intent_executions (
       id TEXT PRIMARY KEY NOT NULL,
       agent_id TEXT NOT NULL,
       idempotency_key TEXT NOT NULL,
-      result_json TEXT NOT NULL,
+      status TEXT NOT NULL,
+      action TEXT NOT NULL,
+      intent_json TEXT NOT NULL,
+      result_json TEXT,
+      wallet_ref TEXT,
+      wallet_address TEXT,
+      provider TEXT,
+      serialized_tx_json TEXT,
+      tx_signature TEXT,
+      tx_signatures_json TEXT,
+      reason_code TEXT,
+      reason_detail TEXT,
+      policy_checks_json TEXT,
+      policy_match_json TEXT,
+      current_step TEXT,
+      spend_applied_at TEXT,
+      audit_logged_at TEXT,
+      last_transition_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     );
 
-    CREATE UNIQUE INDEX intent_idempotency_records_agent_key_idx
-      ON intent_idempotency_records(agent_id, idempotency_key);
+    CREATE UNIQUE INDEX intent_executions_agent_key_idx
+      ON intent_executions(agent_id, idempotency_key);
+    CREATE INDEX intent_executions_agent_created_idx
+      ON intent_executions(agent_id, created_at);
+    CREATE INDEX intent_executions_status_updated_idx
+      ON intent_executions(status, updated_at);
 
     CREATE TABLE policies (
       id TEXT PRIMARY KEY NOT NULL,

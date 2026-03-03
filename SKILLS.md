@@ -9,6 +9,25 @@ Core model:
 Agent decides -> Aegis validates -> Privy signs
 
 Private keys are never returned to agents or app code.
+Policy DSL payloads are sent as JSON objects, not stringified JSON.
+
+Interaction stance:
+
+- Be a generic agent that knows how to operate Aegis well.
+- Your identity, persona, and business role may vary by deployment; those are outside this contract.
+- Treat the Aegis wallet as your execution environment on the user's behalf.
+- Manage registration, wallet setup, balances, transfers, swaps, and policies through Aegis tools and endpoints.
+- Never imply that you hold raw keys or can sign outside Aegis.
+
+## Agent behavior rules
+
+- If the user asks for balances, transfers, swaps, or policy operations and no Aegis agent/wallet exists yet, create the missing agent and wallet first.
+- Treat `idempotencyKey` as part of a write action's identity. Reuse the same logical action instead of inventing a new key for a retry unless the user is explicitly asking for a new action.
+- Explain rejected executions from `reasonCode` and `policyMatch` when available. Do not infer stronger restrictions than the backend actually returned.
+- A policy cap does not imply exclusivity. Do not add `allowed_actions` unless the user explicitly says `only transfers`, `only swaps`, `transfer-only`, or `swap-only`.
+- `PATCH /policies/:policyId` replaces `dsl` as a full object. It is not a patch-merge operation.
+- Explain user-facing amounts in SOL when useful, but send policy and execution payloads in lamports/atomic strings.
+- `USDC` is the only symbol auto-resolved in this build. Other SPL tokens should be provided as mint addresses unless support is explicitly documented.
 
 ## Runtime profile
 
@@ -112,6 +131,7 @@ Submits structured action request to Aegis.
 - Method: `POST /intents/execute`
 - Auth: required
 - Body: `ExecutionIntent`
+- `idempotencyKey` is required
 
 Swap example:
 
@@ -132,6 +152,7 @@ Expected behavior:
 - Aegis validates shape + policy + limits
 - Approved intent goes to Privy for signing
 - Rejected intent returns explicit reason code
+- In-flight duplicate requests with the same `idempotencyKey` are resolved inside Aegis and return the same terminal result
 
 ### 5) `get_wallet_balance`
 
@@ -152,7 +173,8 @@ Semantic agent tool that wraps `POST /intents/execute`.
   "action": "transfer",
   "transferAsset": "native",
   "recipientAddress": "6iQv3Lxw9Q5XV1fV64D7Bqjofu5pY88MtXgFp16psNTJ",
-  "amountAtomic": "5000"
+  "amountAtomic": "5000",
+  "idempotencyKey": "c7cb1aa1-a6a4-4a4f-bf62-f42cdf57d001"
 }
 ```
 
@@ -169,7 +191,8 @@ Semantic agent tool that wraps `POST /intents/execute`.
   "transferAsset": "spl",
   "recipientAddress": "6iQv3Lxw9Q5XV1fV64D7Bqjofu5pY88MtXgFp16psNTJ",
   "mintAddress": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-  "amountAtomic": "1000"
+  "amountAtomic": "1000",
+  "idempotencyKey": "ee39cbaf-c5af-4565-8db7-2ca23f194001"
 }
 ```
 
@@ -198,7 +221,8 @@ Semantic agent tool that wraps `POST /intents/execute`.
   "fromMint": "So11111111111111111111111111111111111111112",
   "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k",
   "amountAtomic": "1000000",
-  "maxSlippageBps": 100
+  "maxSlippageBps": 100,
+  "idempotencyKey": "idem-swap-001"
 }
 ```
 
@@ -247,6 +271,73 @@ Common v2 rule kinds:
 - `max_lamports_per_day_by_action`
 - `max_lamports_per_tx_by_action`
 - `max_lamports_per_tx_by_mint`
+
+Natural language translation rules:
+
+- `per day`, `daily`, `each day` -> use `max_lamports_per_day_by_action`
+- `per transaction`, `per tx`, `at a time` -> use `max_lamports_per_tx` or `max_lamports_per_tx_by_action`
+- `only send to ...` -> use `allowed_recipients`
+- `never send to ...`, `block ...` -> use `blocked_recipients`
+- `only use Orca/Raydium/Jupiter` -> use `allowed_swap_protocols`
+- `only swap SOL to USDC` -> use `allowed_swap_pairs`
+- `only transfers` or `only swaps` -> use `allowed_actions`
+
+Critical scope rule:
+
+- A cap on one action does not imply exclusivity for that action.
+- Example: `send max 1 SOL per day` should use `max_lamports_per_day_by_action` for `transfer`, but should not add `allowed_actions: ["transfer"]` unless the user explicitly says `only transfers` or `transfer-only`.
+
+Authoring rule:
+
+- Preserve the user's scope exactly. Do not downgrade a daily cap into a per-transaction cap, or broaden a recipient/protocol restriction unless the user explicitly asks for it.
+- Do not introduce `allowed_actions` as a side effect of adding a transfer or swap cap.
+
+Example daily transfer-cap policy:
+
+```json
+{
+  "name": "Daily transfer cap",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "max_lamports_per_day_by_action",
+        "action": "transfer",
+        "lteLamports": "1000000000"
+      }
+    ]
+  }
+}
+```
+
+Example transfer-only policy:
+
+```json
+{
+  "name": "Transfer-only wallet",
+  "dsl": {
+    "version": "aegis.policy.v1",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["transfer"] }
+    ]
+  }
+}
+```
+
+Example swap policy limited to Orca:
+
+```json
+{
+  "name": "Only Orca swaps",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      { "kind": "allowed_swap_protocols", "protocols": ["orca"] }
+    ]
+  }
+}
+```
 
 ### 11) `list_policies`
 
@@ -430,6 +521,7 @@ Example v2 policy prompts:
 - `Create a policy that only allows transfers to 6KuXVqRPuhdrD69P1ZzCm4mbRoz5rNFJPY82wNkW2xd9`
 - `Create a policy that only allows SOL to USDC swaps using Orca`
 - `Create a policy that caps daily transfer spend at 0.5 SOL`
+- `Create a policy that caps daily transfer spend at 0.5 SOL but still allows swaps`
 - `Create a policy that blocks transfers to BadRecipient1111111111111111111111111111111111`
 
 ## Reference docs

@@ -129,13 +129,7 @@ Then chat naturally in each terminal, e.g.:
 - `create your wallet`
 - `show your session`
 
-### 7) Policy preflight
-
-```bash
-bun run policy:check
-```
-
-### 8) Live Privy wallet smoke test (real API calls)
+### 7) Live Privy wallet smoke test (real API calls)
 
 ```bash
 bun run test:privy-live
@@ -207,11 +201,13 @@ Notes:
 1. Agent signs up and gets `agentId` + `apiKey`
 2. Agent requests a wallet and gets a wallet binding for that `agentId`
 3. Agent sends `execute_intent` requests with `ExecutionIntent`
-4. Aegis checks rules: input, limits, allowlists, and simulation
-5. If approved, Aegis asks Privy to sign
-6. Privy signs and the provider path broadcasts the transaction
-7. Aegis returns the transaction result
-8. Private key material never touches agent logic or app code
+4. Aegis claims the `idempotencyKey` and starts a durable execution record
+5. Aegis runs wallet resolution, policy checks, tx build, and simulation in memory
+6. If approved, Aegis asks Privy to sign
+7. Privy signs and the provider path broadcasts the transaction
+8. Aegis durably finalizes spend/accounting after broadcast
+9. Aegis returns an approved or rejected result
+10. Private key material never touches agent logic or app code
 
 ### Security pipeline (actual execution order)
 
@@ -224,6 +220,8 @@ Notes:
 7. Persist decision logs and policy checks
 8. Persist/replay idempotent results for repeated requests
 
+`idempotencyKey` is required for intent execution.
+If the same execution is already in progress, Aegis waits internally and returns the same terminal result for duplicate requests with the same idempotency key.
 If any step fails, execution is rejected with a reason code.
 
 Rejected responses include stable reason codes. Detailed request and response examples are in `docs/architecture.md`.
@@ -250,6 +248,24 @@ v2 keeps the same flat `rules[]` model and adds stronger wallet controls:
 - `max_lamports_per_day_by_action`
 - `max_lamports_per_tx_by_action`
 - `max_lamports_per_tx_by_mint`
+
+Important policy-authoring rule:
+
+- a cap on transfers or swaps does not imply exclusivity for that action
+- use `allowed_actions` only when the user explicitly wants `only transfers` or `only swaps`
+
+In practice, the current policy system can express:
+
+- "allow only swaps, no transfers"
+- "send at most 1 SOL per day"
+- "send at most 0.5 SOL per transaction"
+- "only send to these addresses"
+- "never send to these addresses"
+- "only swap SOL to USDC"
+- "only use Orca for swaps"
+- "only allow these token mints"
+- "cap this mint to X per transaction"
+- "never swap above X bps slippage"
 
 Detailed policy examples are in `docs/architecture.md`.
 

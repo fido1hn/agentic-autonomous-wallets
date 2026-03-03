@@ -9,7 +9,7 @@ import { createAgentApiKeysRepository } from "./repositories/agentApiKeysReposit
 import { createDailyActionSpendCountersRepository } from "./repositories/dailyActionSpendCountersRepository";
 import { createDailySpendCountersRepository } from "./repositories/dailySpendCountersRepository";
 import { createExecutionLogsRepository } from "./repositories/executionLogsRepository";
-import { createIntentIdempotencyRepository } from "./repositories/intentIdempotencyRepository";
+import { createIntentExecutionsRepository } from "./repositories/intentExecutionsRepository";
 import { createPoliciesRepository } from "./repositories/policiesRepository";
 import { createWalletBindingsRepository } from "./repositories/walletBindingsRepository";
 import { createWalletPolicyAssignmentsRepository } from "./repositories/walletPolicyAssignmentsRepository";
@@ -31,8 +31,8 @@ export type {
   DailySpendCounterRepository,
   ExecutionLogRecord,
   ExecutionLogRepository,
-  IntentIdempotencyRecord,
-  IntentIdempotencyRepository,
+  IntentExecutionRecord,
+  IntentExecutionRepository,
   CreatePolicyInput,
   PolicyRecord,
   PolicyRepository,
@@ -110,7 +110,7 @@ export function createRepositories(db: BunSQLiteDatabase<typeof schema>): Reposi
     walletPolicyAssignments: createWalletPolicyAssignmentsRepository(db),
     dailySpendCounters: createDailySpendCountersRepository(db),
     dailyActionSpendCounters: createDailyActionSpendCountersRepository(db),
-    intentIdempotency: createIntentIdempotencyRepository(db)
+    intentExecutions: createIntentExecutionsRepository(db)
   };
 }
 

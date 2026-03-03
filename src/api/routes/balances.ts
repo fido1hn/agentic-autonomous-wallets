@@ -1,8 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { getActiveAppContext } from "../appContext";
-import { jsonError } from "../http";
-import { ensureAgentScope, requireAgentAuth } from "../middleware/auth";
 import { getWalletBalances } from "../../protocols/solanaReadAdapter";
+import { apiErrorBody, authenticateAgentRequest, ensureScopedAgentAccess } from "./routeHelpers";
 
 const balancesRoutes = new OpenAPIHono();
 
@@ -83,41 +82,51 @@ const getBalancesRoute = createRoute({
         },
       },
     },
+    500: {
+      description: "Internal error",
+      content: {
+        "application/json": {
+          schema: errorSchema,
+        },
+      },
+    },
   },
 });
 
-balancesRoutes.openapi(
-  getBalancesRoute,
-  (async (c: any) => {
-    const auth = await requireAgentAuth(c);
-    if (auth instanceof Response) {
-      return auth;
-    }
+balancesRoutes.openapi(getBalancesRoute, async (c) => {
+  const auth = await authenticateAgentRequest(c);
+  if (!auth.ok) {
+    return c.json(auth.body, auth.status);
+  }
 
-    const { agentId: scopedAgentId } = c.req.valid("param");
-    const scopeError = ensureAgentScope(c, auth.agentId, scopedAgentId);
-    if (scopeError) {
-      return scopeError;
-    }
+  const { requestId, agentId: headerAgentId } = auth;
+  const { agentWalletService } = getActiveAppContext();
 
-    const { agentWalletService } = getActiveAppContext();
-    try {
-      const wallet = await agentWalletService.getAgentWallet(scopedAgentId);
-      if (!wallet.walletAddress) {
-        return jsonError(c, 500, "WALLET_ADDRESS_UNAVAILABLE", "Wallet address unavailable");
-      }
-      const balances = await getWalletBalances(wallet.walletAddress);
-      return c.json({
+  const { agentId: scopedAgentId } = c.req.valid("param");
+  const scope = ensureScopedAgentAccess(requestId, headerAgentId, scopedAgentId);
+  if (!scope.ok) {
+    return c.json(scope.body, scope.status);
+  }
+
+  try {
+    const wallet = await agentWalletService.getAgentWallet(scopedAgentId);
+    if (!wallet.walletAddress) {
+      return c.json(apiErrorBody(requestId, "WALLET_ADDRESS_UNAVAILABLE", "Wallet address unavailable"), 500);
+    }
+    const balances = await getWalletBalances(wallet.walletAddress);
+    return c.json(
+      {
         agentId: scopedAgentId,
         ...balances,
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
-        return jsonError(c, 404, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found");
-      }
-      return jsonError(c, 500, "SOLANA_RPC_READ_FAILED", "Could not load wallet balances");
+      },
+      200
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === "AGENT_WALLET_NOT_FOUND") {
+      return c.json(apiErrorBody(requestId, "AGENT_WALLET_NOT_FOUND", "Agent wallet not found"), 404);
     }
-  }) as any
-);
+    return c.json(apiErrorBody(requestId, "SOLANA_RPC_READ_FAILED", "Could not load wallet balances"), 500);
+  }
+});
 
 export { balancesRoutes };

@@ -2,6 +2,12 @@ import type { WalletProviderName } from "../core/walletProvider";
 
 export type SerializedTransaction = string | string[];
 
+export type IntentExecutionState =
+  | "received"
+  | "broadcast"
+  | "finalized"
+  | "failed";
+
 export interface ExecutionIntent {
   agentId: string;
   action: "swap" | "transfer";
@@ -15,7 +21,7 @@ export interface ExecutionIntent {
   fromMint?: string;
   toMint?: string;
   maxSlippageBps?: number;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
 export interface PolicyDecision {
@@ -50,7 +56,29 @@ export interface SignatureResult {
   provider: WalletProviderName;
 }
 
-export type ExecutionResult =
+export type ExecutionResult = {
+  status: "approved";
+  provider: WalletProviderName;
+  txSignature: string;
+  txSignatures?: string[];
+  policyChecks: string[];
+} | {
+  status: "rejected";
+  reasonCode: string;
+  reasonDetail?: string;
+  policyChecks?: string[];
+  policyMatch?: PolicyMatchInfo;
+};
+
+export type InternalExecutionResult =
+  | {
+      status: "pending";
+      executionId: string;
+      executionState: Exclude<IntentExecutionState, "finalized" | "failed">;
+      idempotencyKey: string;
+      createdAt: string;
+      updatedAt: string;
+    }
   | {
       status: "approved";
       provider: WalletProviderName;
@@ -65,6 +93,16 @@ export type ExecutionResult =
       policyChecks?: string[];
       policyMatch?: PolicyMatchInfo;
     };
+
+export type ExecutionStatusResponse =
+  | ({
+      executionId: string;
+      agentId: string;
+      idempotencyKey: string;
+      currentStep?: string;
+      createdAt: string;
+      updatedAt: string;
+    } & InternalExecutionResult);
 
 export interface IntentValidationResult {
   ok: boolean;
@@ -148,7 +186,10 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
     errors.push("AMOUNT_ATOMIC_INVALID");
   }
 
-  const idempotencyKey = asString(payload.idempotencyKey) ?? undefined;
+  const idempotencyKey = asString(payload.idempotencyKey);
+  if (!idempotencyKey) {
+    errors.push("IDEMPOTENCY_KEY_REQUIRED");
+  }
   const walletAddress = asString(payload.walletAddress) ?? undefined;
   const swapProtocol = parseSwapProtocol(payload.swapProtocol) ?? undefined;
   const recipientAddress = asString(payload.recipientAddress) ?? undefined;
@@ -216,7 +257,7 @@ export function validateExecutionIntent(input: unknown): IntentValidationResult 
       fromMint,
       toMint,
       walletAddress,
-      idempotencyKey,
+      idempotencyKey: idempotencyKey as string,
       maxSlippageBps
     }
   };

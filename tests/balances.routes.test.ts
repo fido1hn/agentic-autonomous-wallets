@@ -8,6 +8,7 @@ import { setSolanaReadConnectionFactoryForTests } from "../src/protocols/solanaR
 import { AgentAuthService } from "../src/services/agentAuthService";
 import { AgentService } from "../src/services/agentService";
 import { AgentWalletService } from "../src/services/agentWalletService";
+import { IntentExecutionService } from "../src/services/intentExecutionService";
 import { PolicyService } from "../src/services/policyService";
 
 describe("balances routes", () => {
@@ -34,6 +35,7 @@ describe("balances routes", () => {
       db.repositories.walletBindings,
       db.repositories.walletPolicyAssignments
     );
+    const intentExecutionService = new IntentExecutionService(db, agentWalletService, policyService);
 
     const context: AppContext = {
       db,
@@ -41,7 +43,8 @@ describe("balances routes", () => {
       agentService,
       agentWalletService,
       agentAuthService,
-      policyService
+      policyService,
+      intentExecutionService
     };
     setActiveAppContextForTests(context);
 

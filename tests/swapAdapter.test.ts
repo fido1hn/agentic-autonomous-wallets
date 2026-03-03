@@ -27,6 +27,7 @@ describe("swap adapters", () => {
       fromMint: "So11111111111111111111111111111111111111112",
       toMint: Keypair.generate().publicKey.toBase58(),
       amountAtomic: "1000",
+      idempotencyKey: "idem-swap-auto",
     });
 
     expect(protocol).toBe("orca");
@@ -43,6 +44,7 @@ describe("swap adapters", () => {
         fromMint: "So11111111111111111111111111111111111111112",
         toMint: Keypair.generate().publicKey.toBase58(),
         amountAtomic: "1000",
+        idempotencyKey: "idem-jupiter-devnet",
       })
     ).rejects.toThrow("JUPITER_MAINNET_ONLY");
   });
@@ -81,6 +83,7 @@ describe("swap adapters", () => {
       toMint: outputMint,
       amountAtomic: "1000",
       swapProtocol: "raydium",
+      idempotencyKey: "idem-raydium-build",
     });
 
     expect(Array.isArray(result)).toBe(true);
@@ -129,6 +132,7 @@ describe("swap adapters", () => {
       toMint: outputMint,
       amountAtomic: "1000",
       swapProtocol: "orca",
+      idempotencyKey: "idem-orca-build",
     });
 
     expect(typeof result).toBe("string");
@@ -168,6 +172,7 @@ describe("swap adapters", () => {
       toMint: outputMint,
       amountAtomic: "1000",
       swapProtocol: "raydium",
+      idempotencyKey: "idem-raydium-ata",
     });
 
     expect(Array.isArray(result)).toBe(true);

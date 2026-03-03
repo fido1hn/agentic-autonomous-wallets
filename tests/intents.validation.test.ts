@@ -9,6 +9,7 @@ describe("validateExecutionIntent", () => {
       fromMint: "So11111111111111111111111111111111111111112",
       toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
       amountAtomic: "1000000",
+      idempotencyKey: "idem-swap-valid",
       maxSlippageBps: 100
     });
 
@@ -22,7 +23,8 @@ describe("validateExecutionIntent", () => {
     const result = validateExecutionIntent({
       agentId: "agent-mm-01",
       action: "swap",
-      amountAtomic: "1000000"
+      amountAtomic: "1000000",
+      idempotencyKey: "idem-swap-missing-fields"
     });
 
     expect(result.ok).toBe(false);
@@ -36,7 +38,8 @@ describe("validateExecutionIntent", () => {
       action: "transfer",
       transferAsset: "native",
       recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
-      amountAtomic: "5000"
+      amountAtomic: "5000",
+      idempotencyKey: "idem-transfer-native"
     });
 
     expect(result.ok).toBe(true);
@@ -49,7 +52,8 @@ describe("validateExecutionIntent", () => {
       agentId: "agent-mm-01",
       action: "transfer",
       transferAsset: "native",
-      amountAtomic: "5000"
+      amountAtomic: "5000",
+      idempotencyKey: "idem-transfer-missing-recipient"
     });
 
     expect(result.ok).toBe(false);
@@ -62,7 +66,8 @@ describe("validateExecutionIntent", () => {
       action: "transfer",
       transferAsset: "spl",
       recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
-      amountAtomic: "5000"
+      amountAtomic: "5000",
+      idempotencyKey: "idem-transfer-spl-missing-mint"
     });
 
     expect(result.ok).toBe(false);
@@ -75,7 +80,8 @@ describe("validateExecutionIntent", () => {
       action: "swap",
       fromMint: "So11111111111111111111111111111111111111112",
       toMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-      amountLamports: "1000000"
+      amountLamports: "1000000",
+      idempotencyKey: "idem-legacy-lamports"
     });
 
     expect(result.ok).toBe(true);
@@ -88,10 +94,24 @@ describe("validateExecutionIntent", () => {
       action: "transfer",
       transferAsset: "native",
       recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
-      amountAtomic: "0"
+      amountAtomic: "0",
+      idempotencyKey: "idem-non-positive"
     });
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain("AMOUNT_ATOMIC_INVALID");
+  });
+
+  it("rejects missing idempotency key", () => {
+    const result = validateExecutionIntent({
+      agentId: "agent-mm-01",
+      action: "transfer",
+      transferAsset: "native",
+      recipientAddress: "8YfZ6E8wHcQW1E6x4jES8m7fVt4P8Jho7W4g7a7v1e2L",
+      amountAtomic: "1000"
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("IDEMPOTENCY_KEY_REQUIRED");
   });
 });

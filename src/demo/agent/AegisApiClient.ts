@@ -1,10 +1,10 @@
 import type {
   AegisApiErrorPayload,
-  CreateAgentRequest,
-  CreateAgentResponse,
-  ExecutionIntentRequest,
-  ExecutionResultResponse,
-  PolicyAssignmentResponse,
+    CreateAgentRequest,
+    CreateAgentResponse,
+    ExecutionIntentRequest,
+    ExecutionResultResponse,
+    PolicyAssignmentResponse,
   PolicyDetailResponse,
   PolicyListResponse,
   PolicyRecordResponse,
@@ -166,7 +166,7 @@ export class AegisApiClient {
     input: {
       recipientAddress: string;
       amountLamports: string;
-      idempotencyKey?: string;
+      idempotencyKey: string;
     }
   ): Promise<ExecutionResultResponse> {
     return this.executeIntent(agentId, apiKey, {
@@ -186,7 +186,7 @@ export class AegisApiClient {
       recipientAddress: string;
       mintAddress: string;
       amountAtomic: string;
-      idempotencyKey?: string;
+      idempotencyKey: string;
     }
   ): Promise<ExecutionResultResponse> {
     return this.executeIntent(agentId, apiKey, {

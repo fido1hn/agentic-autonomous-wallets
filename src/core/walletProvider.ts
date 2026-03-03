@@ -12,6 +12,12 @@ export interface WalletProvider {
   }): Promise<SignatureResult>;
 }
 
+let activeWalletProvider: WalletProvider = privyProvider;
+
 export function getWalletProvider(): WalletProvider {
-  return privyProvider;
+  return activeWalletProvider;
+}
+
+export function setWalletProviderForTests(provider: WalletProvider | null): void {
+  activeWalletProvider = provider ?? privyProvider;
 }

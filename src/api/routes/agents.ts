@@ -63,9 +63,7 @@ const createAgentRoute = createRoute({
   },
 });
 
-agentsRoutes.openapi(
-  createAgentRoute,
-  (async (c: any) => {
+agentsRoutes.openapi(createAgentRoute, async (c) => {
   const body = c.req.valid("json");
 
   const { agentService, agentAuthService } = getActiveAppContext();
@@ -75,13 +73,15 @@ agentsRoutes.openapi(
   });
 
   const { apiKey } = await agentAuthService.issueKey(agent.id);
-    return c.json({
+  return c.json(
+    {
       agentId: agent.id,
       name: agent.name,
       status: agent.status,
       apiKey,
-    });
-  }) as any,
-);
+    },
+    200
+  );
+});
 
 export { agentsRoutes };

@@ -25,24 +25,22 @@ Submission flow:
 1. Agent signs up and gets `agentId` + `apiKey`
 2. Agent requests a wallet and gets a wallet binding for that `agentId`
 3. Agent sends `execute_intent` requests with `ExecutionIntent`
-4. Aegis checks input, policy, and simulation
-5. If approved, Aegis requests a signature from Privy
-6. Privy signs and the provider path broadcasts the transaction
-7. Aegis returns the transaction execution result
-8. Private key material never touches agent logic or app code
+4. Aegis claims the `idempotencyKey` and starts a durable execution record
+5. Aegis runs wallet resolution, policy checks, tx build, and simulation
+6. If approved, Aegis requests a signature from Privy
+7. Privy signs and the provider path broadcasts the transaction
+8. Aegis finalizes spend/accounting and returns the terminal execution result
+9. Private key material never touches agent logic or app code
 
 Execution flow in system terms (current runtime):
 
 1. Agent submits `ExecutionIntent`
-2. Aegis resolves wallet binding
-3. Assigned DSL policies are evaluated (ordered by priority)
-4. Baseline Aegis policies are evaluated
-5. Protocol adapter builds transaction
-6. Simulation gate validates tx safety
-7. Provider signs and tx is broadcast
-8. Durable spend counters are updated
-9. Execution result + checks are logged
-10. Idempotency record is stored for replay-safe retries
+2. Aegis claims the `idempotencyKey` and creates a durable execution record
+3. Wallet resolution, policy checks, tx build, and simulation run in memory
+4. Provider signs and tx is broadcast
+5. Broadcast metadata is durably persisted
+6. Spend counters and terminal result are finalized atomically
+7. Execution result + checks are logged for replay-safe retries
 
 ## 3. Component responsibilities
 
@@ -90,6 +88,11 @@ Current DSL v2 additions:
 - `max_lamports_per_tx_by_action`
 - `max_lamports_per_tx_by_mint`
 
+Important authoring rule:
+
+- action-scoped caps do not imply action exclusivity
+- use `allowed_actions` only when the policy is intentionally `transfer-only` or `swap-only`
+
 ### 3.4 Protocol Adapter
 
 - Converts intent to protocol tx format
@@ -110,7 +113,7 @@ SQLite stores:
 - Policy assignment priority per wallet
 - Daily spend counters
 - Daily spend counters by action
-- Idempotency execution records
+- Durable execution records keyed by `agentId + idempotencyKey`
 - Intent and tx outcomes
 - Rejection reasons
 
@@ -222,6 +225,225 @@ Lifecycle rules in this build:
 4. Inspect `policyMatch` to identify the blocking rule
 5. Update the policy
 6. Retry the action successfully
+
+### 6.3 Policy cookbook
+
+Use these as copyable examples of the kinds of instructions users can give their agents.
+
+#### Daily transfer cap without blocking swaps
+
+- `Send at most 1 SOL per day`
+
+```json
+{
+  "name": "Daily transfer cap",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "max_lamports_per_day_by_action",
+        "action": "transfer",
+        "lteLamports": "1000000000"
+      }
+    ]
+  }
+}
+```
+
+#### Transfer-only wallet
+
+- `Allow only transfers, no swaps`
+
+```json
+{
+  "name": "Transfer-only wallet",
+  "dsl": {
+    "version": "aegis.policy.v1",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["transfer"] }
+    ]
+  }
+}
+```
+
+#### Swap-only wallet
+
+- `Allow only swaps, no transfers`
+
+```json
+{
+  "name": "Swap-only wallet",
+  "dsl": {
+    "version": "aegis.policy.v1",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] }
+    ]
+  }
+}
+```
+
+#### Per-transaction transfer cap
+
+- `Send at most 0.5 SOL per transaction`
+
+```json
+{
+  "name": "Per-tx transfer cap",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "max_lamports_per_tx_by_action",
+        "action": "transfer",
+        "lteLamports": "500000000"
+      }
+    ]
+  }
+}
+```
+
+#### Recipient allowlist for transfers
+
+- `Only send to 6KuXVqRPuhdrD69P1ZzCm4mbRoz5rNFJPY82wNkW2xd9`
+
+```json
+{
+  "name": "Known recipients only",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "allowed_recipients",
+        "addresses": [
+          "6KuXVqRPuhdrD69P1ZzCm4mbRoz5rNFJPY82wNkW2xd9"
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Recipient blocklist for transfers
+
+- `Never send to BadRecipient1111111111111111111111111111111111`
+
+```json
+{
+  "name": "Blocked recipients",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "blocked_recipients",
+        "addresses": [
+          "BadRecipient1111111111111111111111111111111111"
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Only Orca swaps
+
+- `Allow only swaps using Orca`
+
+```json
+{
+  "name": "Only Orca swaps",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      { "kind": "allowed_swap_protocols", "protocols": ["orca"] }
+    ]
+  }
+}
+```
+
+#### Only SOL -> USDC swaps
+
+- `Allow only SOL to USDC swaps`
+
+```json
+{
+  "name": "Only SOL to USDC swaps",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      {
+        "kind": "allowed_swap_pairs",
+        "pairs": [
+          {
+            "fromMint": "So11111111111111111111111111111111111111112",
+            "toMint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Swap slippage cap
+
+- `Allow swaps only if slippage stays at or below 100 bps`
+
+```json
+{
+  "name": "Low slippage swaps",
+  "dsl": {
+    "version": "aegis.policy.v1",
+    "rules": [
+      { "kind": "allowed_actions", "actions": ["swap"] },
+      { "kind": "max_slippage_bps", "lteBps": 100 }
+    ]
+  }
+}
+```
+
+#### Allowed mint list
+
+- `Only allow these token mints: SOL and USDC`
+
+```json
+{
+  "name": "Allowed mints only",
+  "dsl": {
+    "version": "aegis.policy.v1",
+    "rules": [
+      {
+        "kind": "allowed_mints",
+        "mints": [
+          "So11111111111111111111111111111111111111112",
+          "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k"
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Mint-specific transaction cap
+
+- `Cap USDC to 100 per transaction`
+
+```json
+{
+  "name": "USDC tx cap",
+  "dsl": {
+    "version": "aegis.policy.v2",
+    "rules": [
+      {
+        "kind": "max_lamports_per_tx_by_mint",
+        "mint": "BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k",
+        "lteLamports": "100000000"
+      }
+    ]
+  }
+}
+```
 
 ## 7. Swap backend behavior
 

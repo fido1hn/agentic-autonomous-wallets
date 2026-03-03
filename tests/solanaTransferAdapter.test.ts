@@ -24,6 +24,7 @@ describe("solanaTransferAdapter", () => {
       transferAsset: "native",
       recipientAddress: recipient,
       amountAtomic: "5000",
+      idempotencyKey: "idem-sol-transfer",
     });
     expect(typeof serialized).toBe("string");
 
@@ -63,6 +64,7 @@ describe("solanaTransferAdapter", () => {
       recipientAddress: recipient,
       mintAddress: mint,
       amountAtomic: "1000",
+      idempotencyKey: "idem-spl-transfer",
     });
     expect(typeof serialized).toBe("string");
 
@@ -101,6 +103,7 @@ describe("solanaTransferAdapter", () => {
       recipientAddress: recipient,
       mintAddress: mint,
       amountAtomic: "1000",
+      idempotencyKey: "idem-spl-transfer-ata",
     });
     expect(typeof serialized).toBe("string");
 
@@ -130,6 +133,7 @@ describe("solanaTransferAdapter", () => {
         recipientAddress: "bad",
         mintAddress: mint,
         amountAtomic: "1000",
+        idempotencyKey: "idem-spl-transfer-bad-recipient",
       })
     ).rejects.toThrow("TRANSFER_RECIPIENT_REQUIRED");
 
@@ -142,6 +146,7 @@ describe("solanaTransferAdapter", () => {
         recipientAddress: recipient,
         mintAddress: mint,
         amountAtomic: "1000",
+        idempotencyKey: "idem-spl-transfer-missing-metadata",
       })
     ).rejects.toThrow("SPL_MINT_METADATA_UNAVAILABLE");
   });
